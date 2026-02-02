@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Users } from 'lucide-react';
+import { BookOpen, Folder, FormInput, LayoutGrid, Users } from 'lucide-react';
 
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -29,6 +29,11 @@ const mainNavItems: NavItem[] = [
         title: 'User Management',
         href: admin.users.index(),
         icon: Users,
+    },
+    {
+        title: 'Form Fields',
+        href: admin.formFields.index(),
+        icon: FormInput,
     },
 ];
 
