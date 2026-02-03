@@ -18,6 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
+import { log } from 'console';
 
 interface FormFieldOption {
     id?: number;
@@ -82,10 +83,44 @@ export default function Form({ formField, fieldTypes }: FormFieldFormProps) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (isEditing) {
-            patch(`/admin/form-fields/${formField?.id}`);
+        // Client-side validation
+        if (requiresOptions && data.options.length === 0) {
+            // Show error toast or message
+            console.error('At least one option is required');
+            return;
+        }
+
+        // Prepare data
+        const submitData = { ...data };
+
+        if (!requiresOptions) {
+            // Don't send options for non-option fields
+            delete submitData.options;
         } else {
-            post('/admin/form-fields');
+            // Filter out completely empty options
+            submitData.options = data.options.filter(
+                (opt) => opt.label.trim() !== '' || opt.value.trim() !== '',
+            );
+
+            // Validate we have at least one option
+            if (submitData.options.length === 0) {
+                console.error('At least one option is required');
+                return;
+            }
+        }
+
+        console.log('Submitting:', submitData);
+
+        if (isEditing) {
+            patch(`/admin/form-fields/${formField?.id}`, {
+                data: submitData,
+                preserveScroll: true,
+            });
+        } else {
+            post('/admin/form-fields', {
+                data: submitData,
+                preserveScroll: true,
+            });
         }
     };
 

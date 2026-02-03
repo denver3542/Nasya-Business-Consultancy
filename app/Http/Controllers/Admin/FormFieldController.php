@@ -71,31 +71,41 @@ class FormFieldController extends Controller
         DB::beginTransaction();
 
         try {
-            $formField = FormField::create($request->only([
-                'name',
-                'label',
-                'type',
-                'placeholder',
-                'help_text',
-                'is_active',
-            ]));
+            $formField = FormField::create([
+                'name' => $request->input('name'),
+                'label' => $request->input('label'),
+                'type' => $request->input('type'),
+                'placeholder' => $request->input('placeholder'),
+                'help_text' => $request->input('help_text'),
+                'is_active' => $request->boolean('is_active'),
+            ]);
 
-            if ($request->has('options') && $formField->requiresOptions()) {
-                $this->syncOptions($formField, $request->input('options', []));
+            // Sync options if they exist and field requires them
+            if ($formField->requiresOptions() && $request->filled('options')) {
+                $this->syncOptions($formField, $request->input('options'));
             }
+            
+            Log::info('Form field created successfully.', [
+                'form_field_id' => $formField->id,
+                'has_options' => $request->filled('options'),
+            ]);
 
             DB::commit();
 
-            Log::info('Form field created successfully.', ['form_field_id' => $formField->id]);
-            return to_route('admin.form-fields.index')
+            return redirect()->route('admin.form-fields.index')
                 ->with('success', 'Form field created successfully.');
+                
         } catch (\Exception $e) {
             DB::rollBack();
+            
+            Log::error('Failed to create form field: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-            Log::error('Failed to create form field: '.$e->getMessage());
             return back()
-                ->withInput()
-                ->with('error', 'Failed to create form field: '.$e->getMessage());
+                ->with('error', 'Failed to create form field. Please try again.')
+                ->withInput();
         }
     }
 
@@ -132,15 +142,14 @@ class FormFieldController extends Controller
         DB::beginTransaction();
 
         try {
-            $formField->update($request->only([
-                'name',
-                'label',
-                'type',
-                'placeholder',
-                'help_text',
-                'validation_rules',
-                'is_active',
-            ]));
+            $formField->update([
+                'name' => $request->input('name'),
+                'label' => $request->input('label'),
+                'type' => $request->input('type'),
+                'placeholder' => $request->input('placeholder') ?: null,
+                'help_text' => $request->input('help_text') ?: null,
+                'is_active' => $request->boolean('is_active'),
+            ]);
 
             if ($formField->requiresOptions()) {
                 $this->syncOptions($formField, $request->input('options', []));
