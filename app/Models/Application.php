@@ -29,6 +29,19 @@ class Application extends Model
         'rejected_at',
         'completed_at',
         'deadline',
+
+        // ClickUp features
+        'priority',
+        'tags',
+        'custom_fields',
+        'view_preference',
+        'position',
+        'is_starred',
+        'is_archived',
+        'due_date',
+        'start_date',
+        'time_estimate',
+        'time_tracked',
     ];
 
     protected $casts = [
@@ -80,12 +93,69 @@ class Application extends Model
         return $this->hasMany(Payment::class);
     }
 
+    // New ClickUp-style relationships
+    public function comments()
+    {
+        return $this->hasMany(ApplicationComment::class)->whereNull('parent_id')->latest();
+    }
+
+    public function allComments()
+    {
+        return $this->hasMany(ApplicationComment::class)->latest();
+    }
+
+    public function watchers()
+    {
+        return $this->belongsToMany(User::class, 'application_watchers');
+    }
+
     // Scopes
+
+    public function scopeStarred($query)
+    {
+        return $query->where('is_starred', true);
+    }
+
+    public function scopeArchived($query)
+    {
+        return $query->where('is_archived', true);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_archived', false);
+    }
+
+    public function scopeByPriority($query, $priority)
+    {
+        return $query->where('priority', $priority);
+    }
+
     public function scopeDraft($query)
     {
         return $query->whereHas('status', function ($q) {
             $q->where('slug', 'draft');
         });
+    }
+
+    public function scopeOverdue($query)
+    {
+        return $query->where('due_date', '<', now())
+            ->whereNotIn('application_status_id', function($q) {
+                $q->select('id')
+                  ->from('application_statuses')
+                  ->whereIn('slug', ['completed', 'cancelled', 'rejected']);
+            });
+    }
+
+    public function scopeDueToday($query)
+    {
+        return $query->whereDate('due_date', today());
+    }
+
+    public function scopeDueThisWeek($query)
+    {
+        return $query->whereBetween('due_date', [now()->startOfWeek(), now()->endOfWeek()]);
     }
 
     public function scopeSubmitted($query)
@@ -117,6 +187,83 @@ class Application extends Model
     }
 
     // Accessors
+// Accessors
+    public function getPriorityLabelAttribute()
+    {
+        $labels = [
+            0 => 'None',
+            1 => 'Low',
+            2 => 'Medium',
+            3 => 'High',
+            4 => 'Urgent',
+        ];
+
+        return $labels[$this->priority] ?? 'None';
+    }
+
+    public function getPriorityColorAttribute()
+    {
+        $colors = [
+            0 => 'gray',
+            1 => 'blue',
+            2 => 'yellow',
+            3 => 'orange',
+            4 => 'red',
+        ];
+
+        return $colors[$this->priority] ?? 'gray';
+    }
+
+    public function getIsOverdueAttribute()
+    {
+        if (!$this->due_date) {
+            return false;
+        }
+
+        return $this->due_date->isPast() && 
+               !in_array($this->status->slug, ['completed', 'cancelled', 'rejected']);
+    }
+
+    public function getDaysUntilDueAttribute()
+    {
+        if (!$this->due_date) {
+            return null;
+        }
+
+        return now()->diffInDays($this->due_date, false);
+    }
+
+    public function getTimeEstimateFormattedAttribute()
+    {
+        if (!$this->time_estimate) {
+            return null;
+        }
+
+        if ($this->time_estimate < 1) {
+            return ($this->time_estimate * 60) . ' min';
+        }
+
+        return $this->time_estimate . ' hr' . ($this->time_estimate > 1 ? 's' : '');
+    }
+
+    public function getTimeTrackedFormattedAttribute()
+    {
+        $minutes = $this->time_tracked;
+        
+        if ($minutes < 60) {
+            return $minutes . ' min';
+        }
+
+        $hours = floor($minutes / 60);
+        $remainingMinutes = $minutes % 60;
+
+        if ($remainingMinutes === 0) {
+            return $hours . ' hr' . ($hours > 1 ? 's' : '');
+        }
+
+        return $hours . 'h ' . $remainingMinutes . 'm';
+    }
+
     public function getStatusColorAttribute()
     {
         return $this->status->color ?? 'gray';
@@ -169,6 +316,47 @@ class Application extends Model
     }
 
     // Helper Methods
+    public function toggleStar()
+    {
+        $this->update(['is_starred' => !$this->is_starred]);
+        return $this->is_starred;
+    }
+
+    public function archive()
+    {
+        $this->update(['is_archived' => true]);
+    }
+
+    public function unarchive()
+    {
+        $this->update(['is_archived' => false]);
+    }
+
+    public function addWatcher(User $user)
+    {
+        if (!$this->watchers->contains($user->id)) {
+            $this->watchers()->attach($user->id);
+        }
+    }
+
+    public function removeWatcher(User $user)
+    {
+        $this->watchers()->detach($user->id);
+    }
+
+    public function isWatchedBy(User $user)
+    {
+        return $this->watchers->contains($user->id);
+    }
+
+    public function addComment($comment, User $user, $parentId = null)
+    {
+        return $this->comments()->create([
+            'user_id' => $user->id,
+            'comment' => $comment,
+            'parent_id' => $parentId,
+        ]);
+    }
     public function updateCompletionPercentage()
     {
         $requiredFields = $this->applicationType->form_fields ?? [];
@@ -219,6 +407,10 @@ class Application extends Model
             if (empty($application->application_number)) {
                 $application->application_number = static::generateApplicationNumber();
             }
+
+            static::created(function ($application) {
+                $application->addWatcher($application->user);
+            });
         });
     }
 

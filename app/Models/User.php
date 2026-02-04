@@ -61,6 +61,11 @@ class User extends Authenticatable
         ];
     }
 
+    public function applicationViews()
+    {
+        return $this->hasMany(ApplicationView::class)->orderBy('position');
+    }
+    
     /**
      * Get the user's profile.
      */
