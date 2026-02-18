@@ -29,12 +29,21 @@ import type {
 } from '@/types';
 
 interface ApplicationFormProps {
+    Client: {
+        id: number;
+        name: string;
+        email: string;
+        phone: string;
+        profile_completed: boolean;
+    };
+    clients: Client[];
     application?: Application;
     applicationTypes: ApplicationType[];
     errors: Record<string, string>;
 }
 
 export default function ApplicationForm({
+    clients,
     application,
     applicationTypes,
     errors,
@@ -55,6 +64,9 @@ export default function ApplicationForm({
     const [isSaving, setIsSaving] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [recentlySaved, setRecentlySaved] = useState(false);
+    const [selectedClientId, setSelectedClientId] = useState<number | null>(
+        application?.client_id || null,
+    );
 
     const selectedType = applicationTypes.find((t) => t.id === selectedTypeId);
     // Use form_fields_array (from relational structure) if available, otherwise fall back to form_fields (JSON)
@@ -458,6 +470,42 @@ export default function ApplicationForm({
                                 </CardContent>
                             </Card>
                         )}
+                        {/* Client Selection */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Client</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-2">
+                                    <Label htmlFor="client">
+                                        Select Client
+                                    </Label>
+                                    <Select
+                                        value={
+                                            selectedClientId?.toString() || ''
+                                        }
+                                        onValueChange={(val) =>
+                                            setSelectedClientId(parseInt(val))
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Choose a client" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {clients.map((client) => (
+                                                <SelectItem
+                                                    key={client.id}
+                                                    value={client.id.toString()}
+                                                >
+                                                    {client.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.client_id} />
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         {/* Client Notes */}
                         <Card>

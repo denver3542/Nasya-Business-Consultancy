@@ -64,6 +64,33 @@ export interface Board {
     [statusSlug: string]: Application[];
 }
 
+export interface UserBoard {
+    id: number;
+    user_id: number;
+    name: string;
+    description: string | null;
+    color: string;
+    is_starred: boolean;
+    position: number;
+    created_at: string;
+    updated_at: string;
+    lists_count?: number;
+    applications_count?: number;
+    lists?: BoardList[];
+}
+
+export interface BoardList {
+    id: number;
+    board_id: number;
+    name: string;
+    color: string | null;
+    position: number;
+    created_at: string;
+    updated_at: string;
+    applications_count?: number;
+    applications?: Application[];
+}
+
 export interface FilterOptions {
     types: ApplicationType[];
     statuses: ApplicationStatus[];

@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Application;
-use App\Models\ApplicationType;
 use App\Models\ApplicationStatus;
-use App\Models\ApplicationView;
+use App\Models\ApplicationType;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -14,48 +14,64 @@ use Inertia\Inertia;
 class ApplicationController extends Controller
 {
     /**
-     * Display applications in ClickUp-style views
+     * Display applications in list view.
      */
     public function index(Request $request)
     {
-        $viewType = $request->get('view', 'list'); // list, board, calendar, table
-        
-        $query = auth()->user()->applications()
-            ->with(['applicationType', 'status', 'assignedStaff', 'watchers'])
-            ->active() // Not archived
-            ->latest();
+        $user = auth()->user();
+        $isStaff = $user->hasAnyRole(['admin', 'staff']);
+
+        // Staff sees all applications, clients see only their own
+        $query = $isStaff
+            ? Application::query()->with(['user', 'applicationType', 'status', 'assignedStaff'])
+            : $user->applications()->with(['user', 'applicationType', 'status', 'assignedStaff']);
+
+        $query->active()->latest();
 
         // Apply filters
         $this->applyFilters($query, $request);
 
-        // Get data based on view type
-        switch ($viewType) {
-            case 'board':
-                return $this->boardView($query, $request);
-            case 'calendar':
-                return $this->calendarView($query, $request);
-            case 'table':
-                return $this->tableView($query, $request);
-            default:
-                return $this->listView($query, $request);
-        }
+        // Apply sorting
+        $sortBy = $request->get('sort_by', 'created_at');
+        $sortOrder = $request->get('sort_order', 'desc');
+        $this->applySorting($query, $sortBy, $sortOrder);
+
+        $applications = $query->paginate(20)->through(function ($application) {
+            return array_merge($application->toArray(), [
+                'can_edit' => $application->can_edit,
+                'is_draft' => $application->is_draft,
+            ]);
+        });
+
+        return Inertia::render('applications/index', [
+            'applications' => $applications,
+            'filters' => [
+                'search' => $request->get('search'),
+                'status' => $request->get('status'),
+                'type' => $request->get('type'),
+                'date_from' => $request->get('date_from'),
+                'date_to' => $request->get('date_to'),
+            ],
+            'statuses' => ApplicationStatus::visibleToClient()->get(),
+            'types' => ApplicationType::active()->get(),
+        ]);
     }
 
     /**
-     * List view (default)
+     * List view (advanced ClickUp-style).
      */
-    protected function listView($query, $request)
+    protected function listView($query, Request $request)
     {
         // Get grouping option
         $groupBy = $request->get('group_by');
-        
+
         // Get sorting
         $sortBy = $request->get('sort_by', 'created_at');
         $sortOrder = $request->get('sort_order', 'desc');
-        
+
         // Apply sorting
         $this->applySorting($query, $sortBy, $sortOrder);
-        
+
         if ($groupBy) {
             $applications = $this->groupApplications($query->get(), $groupBy);
         } else {
@@ -103,13 +119,13 @@ class ApplicationController extends Controller
             default:
                 $query->orderBy('created_at', $sortOrder);
         }
-        
+
         return $query;
     }
 
     protected function groupApplications($applications, $groupBy)
     {
-        return $applications->groupBy(function($app) use ($groupBy) {
+        return $applications->groupBy(function ($app) use ($groupBy) {
             switch ($groupBy) {
                 case 'status':
                     return $app->status->name;
@@ -122,18 +138,20 @@ class ApplicationController extends Controller
                 default:
                     return 'All';
             }
-        })->map(function($group) {
+        })->map(function ($group) {
             return $group->values();
         });
     }
 
     /**
-     * Board view (Kanban)
+     * Board view (Kanban).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      */
-    protected function boardView($query, $request)
+    protected function boardView($query)
     {
         $statuses = ApplicationStatus::visibleToClient()->get();
-        
+
         $board = [];
         foreach ($statuses as $status) {
             $board[$status->slug] = $query->clone()
@@ -151,9 +169,11 @@ class ApplicationController extends Controller
     }
 
     /**
-     * Calendar view
+     * Calendar view.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      */
-    protected function calendarView($query, $request)
+    protected function calendarView($query)
     {
         $applications = $query->whereNotNull('due_date')->get();
 
@@ -165,9 +185,11 @@ class ApplicationController extends Controller
     }
 
     /**
-     * Table view (spreadsheet-like)
+     * Table view (spreadsheet-like).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
      */
-    protected function tableView($query, $request)
+    protected function tableView($query)
     {
         $applications = $query->paginate(50);
 
@@ -186,7 +208,7 @@ class ApplicationController extends Controller
     {
         // Status filter
         if ($request->filled('status')) {
-            $query->whereHas('status', function($q) use ($request) {
+            $query->whereHas('status', function ($q) use ($request) {
                 $q->where('slug', $request->status);
             });
         }
@@ -204,7 +226,7 @@ class ApplicationController extends Controller
         // Tags filter
         if ($request->filled('tags')) {
             $tags = is_array($request->tags) ? $request->tags : [$request->tags];
-            $query->where(function($q) use ($tags) {
+            $query->where(function ($q) use ($tags) {
                 foreach ($tags as $tag) {
                     $q->orWhereJsonContains('tags', $tag);
                 }
@@ -239,11 +261,11 @@ class ApplicationController extends Controller
         // Search
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('application_number', 'like', "%{$search}%")
-                  ->orWhereHas('applicationType', function($subQ) use ($search) {
-                      $subQ->where('name', 'like', "%{$search}%");
-                  });
+                    ->orWhereHas('applicationType', function ($subQ) use ($search) {
+                        $subQ->where('name', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -352,8 +374,9 @@ class ApplicationController extends Controller
                 'application' => $application->load(['status', 'applicationType']),
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             DB::rollBack();
+
             return response()->json(['error' => 'Failed to update position'], 500);
         }
     }
@@ -418,7 +441,7 @@ class ApplicationController extends Controller
         } else {
             $application->addToTimeline(
                 'due_date_removed',
-                "Due date removed"
+                'Due date removed'
             );
         }
 
@@ -440,8 +463,8 @@ class ApplicationController extends Controller
         ]);
 
         $tags = $application->tags ?? [];
-        
-        if (!in_array($request->tag, $tags)) {
+
+        if (! in_array($request->tag, $tags)) {
             $tags[] = $request->tag;
             $application->update(['tags' => $tags]);
         }
@@ -464,8 +487,8 @@ class ApplicationController extends Controller
         ]);
 
         $tags = $application->tags ?? [];
-        $tags = array_values(array_filter($tags, fn($t) => $t !== $request->tag));
-        
+        $tags = array_values(array_filter($tags, fn ($t) => $t !== $request->tag));
+
         $application->update(['tags' => $tags]);
 
         return response()->json([
@@ -570,7 +593,7 @@ class ApplicationController extends Controller
                     break;
                 case 'add_tag':
                     $tags = $application->tags ?? [];
-                    if (!in_array($request->value, $tags)) {
+                    if (! in_array($request->value, $tags)) {
                         $tags[] = $request->value;
                         $application->update(['tags' => $tags]);
                     }
@@ -584,5 +607,295 @@ class ApplicationController extends Controller
         ]);
     }
 
-    // ... existing methods (store, show, edit, update, submit, destroy)
+    /**
+     * Show the form for creating a new application.
+     */
+    public function create()
+    {
+        // $this->authorize('create', Application::class);
+        // Get all clients
+        $clients = User::role('client')
+            ->with('profile')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'profile_completed' => $user->profile_completed ?? false,
+                ];
+            });
+
+        $applicationTypes = ApplicationType::active()->get();
+
+        return Inertia::render('applications/form', [
+            'clients' => $clients,
+            'applicationTypes' => ApplicationType::active()->get()->map(function ($type) {
+                return [
+                    'id' => $type->id,
+                    'name' => $type->name,
+                    'slug' => $type->slug,
+                    'description' => $type->description,
+                    'base_fee' => $type->base_fee,
+                    'formatted_fee' => $type->formatted_fee,
+                    'estimated_duration' => $type->estimated_duration,
+                    'required_documents' => $type->required_documents,
+                    'form_fields' => $type->form_fields,
+                    'form_fields_array' => $type->form_fields_array,
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Store a newly created application.
+     */
+    public function store(\App\Http\Requests\StoreApplicationRequest $request)
+    {
+        // $this->authorize('create', Application::class);
+
+        $applicationType = ApplicationType::findOrFail($request->application_type_id);
+        $draftStatus = ApplicationStatus::where('slug', 'draft')->firstOrFail();
+        $submittedStatus = ApplicationStatus::where('slug', 'submitted')->firstOrFail();
+
+        $isDraft = $request->boolean('is_draft', true);
+
+        $application = Application::create([
+            'user_id' => auth()->id(),
+            'client_id' => $request->client_id,
+            'application_type_id' => $request->application_type_id,
+            'application_status_id' => $isDraft ? $draftStatus->id : $submittedStatus->id,
+            'form_data' => $request->form_data ?? [],
+            'client_notes' => $request->client_notes,
+            'total_fee' => $applicationType->base_fee,
+            'completion_percentage' => 0,
+            'submitted_at' => $isDraft ? null : now(),
+        ]);
+
+        $application->updateCompletionPercentage();
+
+        $application->addToTimeline(
+            'created',
+            'Application created'
+        );
+
+        if (! $isDraft) {
+            $application->addToTimeline(
+                'submitted',
+                'Application submitted for review'
+            );
+        }
+
+        return redirect()->route('applications.show', $application)
+            ->with('success', $isDraft ? 'Application saved as draft.' : 'Application submitted successfully.');
+    }
+
+    /**
+     * Display the specified application.
+     */
+    public function show(Application $application)
+    {
+        $this->authorize('view', $application);
+
+        $application->load([
+            'user',
+            'applicationType',
+            'status',
+            'assignedStaff',
+            'documents',
+            'timeline.user',
+            'payments',
+            'watchers',
+        ]);
+
+        $user = auth()->user();
+
+        return Inertia::render('applications/show', [
+            'application' => array_merge($application->toArray(), [
+                'can_edit' => $application->can_edit,
+                'is_draft' => $application->is_draft,
+                'remaining_balance' => $application->remaining_balance,
+            ]),
+            'canEdit' => $user->can('update', $application),
+            'canApprove' => $user->can('approve', $application) && $application->status->slug === 'submitted',
+            'canReject' => $user->can('reject', $application) && $application->status->slug === 'submitted',
+            'canComplete' => $user->can('complete', $application) && $application->status->slug === 'approved',
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified application.
+     */
+    public function edit(Application $application)
+    {
+        $this->authorize('update', $application);
+
+        $application->load(['applicationType', 'documents', 'payments']);
+
+        return Inertia::render('applications/form', [
+            'application' => array_merge($application->toArray(), [
+                'can_edit' => $application->can_edit,
+                'is_draft' => $application->is_draft,
+                'remaining_balance' => $application->remaining_balance,
+            ]),
+            'applicationTypes' => ApplicationType::active()->get()->map(function ($type) {
+                return [
+                    'id' => $type->id,
+                    'name' => $type->name,
+                    'slug' => $type->slug,
+                    'description' => $type->description,
+                    'base_fee' => $type->base_fee,
+                    'formatted_fee' => $type->formatted_fee,
+                    'estimated_duration' => $type->estimated_duration,
+                    'required_documents' => $type->required_documents,
+                    'form_fields' => $type->form_fields,
+                    'form_fields_array' => $type->form_fields_array,
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Update the specified application.
+     */
+    public function update(\App\Http\Requests\UpdateApplicationRequest $request, Application $application)
+    {
+        $this->authorize('update', $application);
+
+        $isDraft = $request->boolean('is_draft', true);
+
+        $application->update([
+            'form_data' => $request->form_data ?? $application->form_data,
+            'client_notes' => $request->client_notes,
+        ]);
+
+        $application->updateCompletionPercentage();
+
+        // If submitting (not a draft anymore)
+        if (! $isDraft && $application->is_draft) {
+            $submittedStatus = ApplicationStatus::where('slug', 'submitted')->firstOrFail();
+            $application->update([
+                'application_status_id' => $submittedStatus->id,
+                'submitted_at' => now(),
+            ]);
+
+            $application->addToTimeline(
+                'submitted',
+                'Application submitted for review'
+            );
+
+            return redirect()->route('applications.show', $application)
+                ->with('success', 'Application submitted successfully.');
+        }
+
+        $application->addToTimeline(
+            'updated',
+            'Application details updated'
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('success', 'Application updated successfully.');
+    }
+
+    /**
+     * Remove the specified application from storage.
+     */
+    public function destroy(Application $application)
+    {
+        $this->authorize('delete', $application);
+
+        $application->delete();
+
+        return redirect()->route('applications.index')
+            ->with('success', 'Application deleted successfully.');
+    }
+
+    /**
+     * Approve the application.
+     */
+    public function approve(Application $application)
+    {
+        $this->authorize('approve', $application);
+
+        $approvedStatus = ApplicationStatus::where('slug', 'approved')->firstOrFail();
+
+        $application->update([
+            'application_status_id' => $approvedStatus->id,
+            'approved_at' => now(),
+        ]);
+
+        $application->addToTimeline(
+            'approved',
+            'Application approved by '.auth()->user()->name
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('success', 'Application approved successfully.');
+    }
+
+    /**
+     * Reject the application.
+     */
+    public function reject(Request $request, Application $application)
+    {
+        $this->authorize('reject', $application);
+
+        $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $rejectedStatus = ApplicationStatus::where('slug', 'rejected')->firstOrFail();
+
+        $application->update([
+            'application_status_id' => $rejectedStatus->id,
+            'rejected_at' => now(),
+            'rejection_reason' => $request->rejection_reason,
+        ]);
+
+        $application->addToTimeline(
+            'rejected',
+            'Application rejected by '.auth()->user()->name.($request->rejection_reason ? ': '.$request->rejection_reason : '')
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('success', 'Application rejected.');
+    }
+
+    /**
+     * Mark the application as complete.
+     */
+    public function complete(Application $application)
+    {
+        $this->authorize('complete', $application);
+
+        $completedStatus = ApplicationStatus::where('slug', 'completed')->firstOrFail();
+
+        $application->update([
+            'application_status_id' => $completedStatus->id,
+            'completed_at' => now(),
+            'completion_percentage' => 100,
+        ]);
+
+        $application->addToTimeline(
+            'completed',
+            'Application marked as complete by '.auth()->user()->name
+        );
+
+        return redirect()->route('applications.show', $application)
+            ->with('success', 'Application marked as complete.');
+    }
+
+    public function settings()
+    {
+        return Inertia::render('applications/settings');
+    }
+    public function updateSettings(Request $request)
+    {
+        $request->user()->update($request->validated());
+
+        return redirect()->back()->with('success', 'Settings updated.');
+    }
 }

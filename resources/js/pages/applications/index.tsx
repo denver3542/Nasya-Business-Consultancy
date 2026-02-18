@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Eye, Pencil, Plus, Search, Trash } from 'lucide-react';
+import { Eye, Pencil, Plus, Search, Settings, Trash } from 'lucide-react';
 import { useState } from 'react';
 
 import ApplicationStatusBadge from '@/components/application-status-badge';
@@ -38,6 +38,7 @@ import type {
     BreadcrumbItem,
     PaginatedApplications,
 } from '@/types';
+import { settings } from '@/routes/applications';
 
 interface ApplicationsIndexProps {
     applications: PaginatedApplications;
@@ -121,12 +122,21 @@ export default function Index({
                             Manage all applications in the system
                         </p>
                     </div>
-                    <Link href="/applications/create">
-                        <Button>
-                            <Plus className="mr-2 size-4" />
-                            New Application
-                        </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                        <Link href="/applications/create">
+                            <Button>
+                                <Plus className="mr-2 size-4" />
+                                New Application
+                            </Button>
+                        </Link>
+                        {/* Settings Link */}
+                        <Link href={settings()}>
+                            <Button variant="outline">
+                                <Settings className="mr-2 size-4" />
+                                Settings
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 {/* Filters */}

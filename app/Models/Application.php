@@ -42,6 +42,11 @@ class Application extends Model
         'start_date',
         'time_estimate',
         'time_tracked',
+
+        // Board features
+        'board_id',
+        'board_list_id',
+        'board_position',
     ];
 
     protected $casts = [
@@ -109,6 +114,22 @@ class Application extends Model
         return $this->belongsToMany(User::class, 'application_watchers');
     }
 
+    /**
+     * Get the board this application belongs to.
+     */
+    public function board()
+    {
+        return $this->belongsTo(Board::class);
+    }
+
+    /**
+     * Get the board list this application belongs to.
+     */
+    public function boardList()
+    {
+        return $this->belongsTo(BoardList::class);
+    }
+
     // Scopes
 
     public function scopeStarred($query)
@@ -141,10 +162,10 @@ class Application extends Model
     public function scopeOverdue($query)
     {
         return $query->where('due_date', '<', now())
-            ->whereNotIn('application_status_id', function($q) {
+            ->whereNotIn('application_status_id', function ($q) {
                 $q->select('id')
-                  ->from('application_statuses')
-                  ->whereIn('slug', ['completed', 'cancelled', 'rejected']);
+                    ->from('application_statuses')
+                    ->whereIn('slug', ['completed', 'cancelled', 'rejected']);
             });
     }
 
@@ -187,7 +208,7 @@ class Application extends Model
     }
 
     // Accessors
-// Accessors
+    // Accessors
     public function getPriorityLabelAttribute()
     {
         $labels = [
@@ -216,17 +237,17 @@ class Application extends Model
 
     public function getIsOverdueAttribute()
     {
-        if (!$this->due_date) {
+        if (! $this->due_date) {
             return false;
         }
 
-        return $this->due_date->isPast() && 
-               !in_array($this->status->slug, ['completed', 'cancelled', 'rejected']);
+        return $this->due_date->isPast() &&
+               ! in_array($this->status->slug, ['completed', 'cancelled', 'rejected']);
     }
 
     public function getDaysUntilDueAttribute()
     {
-        if (!$this->due_date) {
+        if (! $this->due_date) {
             return null;
         }
 
@@ -235,33 +256,33 @@ class Application extends Model
 
     public function getTimeEstimateFormattedAttribute()
     {
-        if (!$this->time_estimate) {
+        if (! $this->time_estimate) {
             return null;
         }
 
         if ($this->time_estimate < 1) {
-            return ($this->time_estimate * 60) . ' min';
+            return ($this->time_estimate * 60).' min';
         }
 
-        return $this->time_estimate . ' hr' . ($this->time_estimate > 1 ? 's' : '');
+        return $this->time_estimate.' hr'.($this->time_estimate > 1 ? 's' : '');
     }
 
     public function getTimeTrackedFormattedAttribute()
     {
         $minutes = $this->time_tracked;
-        
+
         if ($minutes < 60) {
-            return $minutes . ' min';
+            return $minutes.' min';
         }
 
         $hours = floor($minutes / 60);
         $remainingMinutes = $minutes % 60;
 
         if ($remainingMinutes === 0) {
-            return $hours . ' hr' . ($hours > 1 ? 's' : '');
+            return $hours.' hr'.($hours > 1 ? 's' : '');
         }
 
-        return $hours . 'h ' . $remainingMinutes . 'm';
+        return $hours.'h '.$remainingMinutes.'m';
     }
 
     public function getStatusColorAttribute()
@@ -318,7 +339,8 @@ class Application extends Model
     // Helper Methods
     public function toggleStar()
     {
-        $this->update(['is_starred' => !$this->is_starred]);
+        $this->update(['is_starred' => ! $this->is_starred]);
+
         return $this->is_starred;
     }
 
@@ -334,7 +356,7 @@ class Application extends Model
 
     public function addWatcher(User $user)
     {
-        if (!$this->watchers->contains($user->id)) {
+        if (! $this->watchers->contains($user->id)) {
             $this->watchers()->attach($user->id);
         }
     }
@@ -357,6 +379,7 @@ class Application extends Model
             'parent_id' => $parentId,
         ]);
     }
+
     public function updateCompletionPercentage()
     {
         $requiredFields = $this->applicationType->form_fields ?? [];

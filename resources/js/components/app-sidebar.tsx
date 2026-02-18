@@ -1,5 +1,13 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, FormInput, LayoutGrid, Users } from 'lucide-react';
+import {
+    BookOpen,
+    CheckSquare,
+    Folder,
+    FormInput,
+    Kanban,
+    LayoutGrid,
+    Users,
+} from 'lucide-react';
 
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -13,8 +21,10 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import admin from '@/routes/admin';
 import { dashboard } from '@/routes';
+import admin from '@/routes/admin';
+import applications from '@/routes/applications';
+import client from '@/routes/client';
 import type { NavItem } from '@/types';
 
 import AppLogo from './app-logo';
@@ -26,9 +36,19 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'Boards',
+        href: client.boards.index(),
+        icon: Kanban,
+    },
+    {
         title: 'User Management',
         href: admin.users.index(),
         icon: Users,
+    },
+    {
+        title: 'Applications',
+        href: applications.index(),
+        icon: CheckSquare,
     },
     {
         title: 'Form Fields',
