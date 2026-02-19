@@ -43,10 +43,10 @@ class Application extends Model
         'time_estimate',
         'time_tracked',
 
-        // Board features
-        'board_id',
-        'board_list_id',
-        'board_position',
+        // Service features
+        'service_id',
+        'service_stage_id',
+        'service_position',
     ];
 
     protected $casts = [
@@ -115,19 +115,19 @@ class Application extends Model
     }
 
     /**
-     * Get the board this application belongs to.
+     * Get the service this application belongs to.
      */
-    public function board()
+    public function service()
     {
-        return $this->belongsTo(Board::class);
+        return $this->belongsTo(Service::class);
     }
 
     /**
-     * Get the board list this application belongs to.
+     * Get the service stage this application belongs to.
      */
-    public function boardList()
+    public function serviceStage()
     {
-        return $this->belongsTo(BoardList::class);
+        return $this->belongsTo(ServiceStage::class);
     }
 
     // Scopes

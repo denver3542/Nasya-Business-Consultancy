@@ -36,8 +36,8 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Boards',
-        href: client.boards.index(),
+        title: 'Services',
+        href: client.services.index(),
         icon: Kanban,
     },
     {

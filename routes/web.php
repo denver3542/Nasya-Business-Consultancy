@@ -3,8 +3,8 @@
 use App\Http\Controllers\Admin\FormFieldController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Client\ApplicationController;
-use App\Http\Controllers\Client\BoardController;
-use App\Http\Controllers\Client\BoardListController;
+use App\Http\Controllers\Client\ServiceController;
+use App\Http\Controllers\Client\ServiceStageController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -29,7 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('applications.update-settings');
         
     Route::resource('applications', ApplicationController::class);
-x
+
     // Application workflow actions
     Route::post('applications/{application}/approve', [ApplicationController::class, 'approve'])
         ->name('applications.approve');
@@ -68,30 +68,30 @@ x
         ->name('applications.bulk-action');
 });
 
-// Client routes (boards)
+// Client routes (services)
 Route::middleware(['auth', 'verified'])->prefix('client')->name('client.')->group(function () {
-    // Boards
-    Route::resource('boards', BoardController::class);
-    Route::post('boards/{board}/toggle-star', [BoardController::class, 'toggleStar'])
-        ->name('boards.toggle-star');
-    Route::post('boards/update-positions', [BoardController::class, 'updatePositions'])
-        ->name('boards.update-positions');
-    Route::post('boards/{board}/add-application', [BoardController::class, 'addApplication'])
-        ->name('boards.add-application');
-    Route::post('boards/{board}/remove-application', [BoardController::class, 'removeApplication'])
-        ->name('boards.remove-application');
-    Route::post('boards/{board}/move-application', [BoardController::class, 'moveApplication'])
-        ->name('boards.move-application');
+    // Services
+    Route::resource('services', ServiceController::class);
+    Route::post('services/{service}/toggle-star', [ServiceController::class, 'toggleStar'])
+        ->name('services.toggle-star');
+    Route::post('services/update-positions', [ServiceController::class, 'updatePositions'])
+        ->name('services.update-positions');
+    Route::post('services/{service}/add-application', [ServiceController::class, 'addApplication'])
+        ->name('services.add-application');
+    Route::post('services/{service}/remove-application', [ServiceController::class, 'removeApplication'])
+        ->name('services.remove-application');
+    Route::post('services/{service}/move-application', [ServiceController::class, 'moveApplication'])
+        ->name('services.move-application');
 
-    // Board Lists
-    Route::post('boards/{board}/lists', [BoardListController::class, 'store'])
-        ->name('boards.lists.store');
-    Route::patch('boards/{board}/lists/{list}', [BoardListController::class, 'update'])
-        ->name('boards.lists.update');
-    Route::delete('boards/{board}/lists/{list}', [BoardListController::class, 'destroy'])
-        ->name('boards.lists.destroy');
-    Route::post('boards/{board}/lists/update-positions', [BoardListController::class, 'updatePositions'])
-        ->name('boards.lists.update-positions');
+    // Service Stages
+    Route::post('services/{service}/stages', [ServiceStageController::class, 'store'])
+        ->name('services.stages.store');
+    Route::patch('services/{service}/stages/{stage}', [ServiceStageController::class, 'update'])
+        ->name('services.stages.update');
+    Route::delete('services/{service}/stages/{stage}', [ServiceStageController::class, 'destroy'])
+        ->name('services.stages.destroy');
+    Route::post('services/{service}/stages/update-positions', [ServiceStageController::class, 'updatePositions'])
+        ->name('services.stages.update-positions');
 });
 
 // Admin routes

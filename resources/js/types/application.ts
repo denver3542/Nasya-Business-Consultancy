@@ -64,7 +64,7 @@ export interface Board {
     [statusSlug: string]: Application[];
 }
 
-export interface UserBoard {
+export interface UserService {
     id: number;
     user_id: number;
     name: string;
@@ -74,14 +74,14 @@ export interface UserBoard {
     position: number;
     created_at: string;
     updated_at: string;
-    lists_count?: number;
+    stages_count?: number;
     applications_count?: number;
-    lists?: BoardList[];
+    stages?: ServiceStage[];
 }
 
-export interface BoardList {
+export interface ServiceStage {
     id: number;
-    board_id: number;
+    service_id: number;
     name: string;
     color: string | null;
     position: number;
