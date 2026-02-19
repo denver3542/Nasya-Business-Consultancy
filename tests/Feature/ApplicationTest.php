@@ -3,6 +3,7 @@
 use App\Models\Application;
 use App\Models\ApplicationStatus;
 use App\Models\ApplicationType;
+use App\Models\FormField;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Role;
@@ -61,22 +62,31 @@ beforeEach(function () {
         'description' => 'Register your business',
         'base_fee' => 5000.00,
         'estimated_processing_days' => 7,
-        'form_fields' => [
-            [
-                'name' => 'business_name',
-                'label' => 'Business Name',
-                'type' => 'text',
-                'required' => true,
-            ],
-            [
-                'name' => 'business_address',
-                'label' => 'Business Address',
-                'type' => 'textarea',
-                'required' => true,
-            ],
-        ],
         'required_documents' => ['DTI Certificate', 'Valid ID'],
         'is_active' => true,
+    ]);
+
+    $businessNameField = FormField::create([
+        'name' => 'business_name',
+        'label' => 'Business Name',
+        'type' => 'text',
+        'is_active' => true,
+    ]);
+
+    $businessAddressField = FormField::create([
+        'name' => 'business_address',
+        'label' => 'Business Address',
+        'type' => 'textarea',
+        'is_active' => true,
+    ]);
+
+    $this->applicationType->formFields()->attach($businessNameField->id, [
+        'is_required' => true,
+        'display_order' => 1,
+    ]);
+    $this->applicationType->formFields()->attach($businessAddressField->id, [
+        'is_required' => true,
+        'display_order' => 2,
     ]);
 });
 

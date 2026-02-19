@@ -23,6 +23,7 @@ class UpdateApplicationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'custom_fields' => 'nullable|array',
             'form_data' => 'nullable|array',
             'client_notes' => 'nullable|string|max:5000',
             'is_draft' => 'boolean',
@@ -37,6 +38,7 @@ class UpdateApplicationRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'custom_fields.array' => 'The custom fields must be a valid array.',
             'form_data.array' => 'The form data must be a valid array.',
             'client_notes.max' => 'Client notes cannot exceed 5000 characters.',
             'is_draft.boolean' => 'The draft flag must be true or false.',

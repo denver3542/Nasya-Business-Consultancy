@@ -39,6 +39,8 @@ export interface Application {
     total_fee: number;
     amount_paid: number;
     is_paid: boolean;
+    custom_fields?: Record<string, unknown>;
+    form_data?: Record<string, unknown>;
     submitted_at: string | null;
     created_at: string;
     updated_at: string;

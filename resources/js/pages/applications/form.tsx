@@ -53,7 +53,7 @@ export default function ApplicationForm({
         application?.application_type_id || null,
     );
     const [formData, setFormData] = useState<Record<string, unknown>>(
-        application?.form_data || {},
+        application?.custom_fields || application?.form_data || {},
     );
     const [clientNotes, setClientNotes] = useState(
         application?.client_notes || '',
@@ -69,11 +69,9 @@ export default function ApplicationForm({
     );
 
     const selectedType = applicationTypes.find((t) => t.id === selectedTypeId);
-    // Use form_fields_array (from relational structure) if available, otherwise fall back to form_fields (JSON)
     const formFields = useMemo(
-        () =>
-            selectedType?.form_fields_array ?? selectedType?.form_fields ?? [],
-        [selectedType?.form_fields_array, selectedType?.form_fields],
+        () => selectedType?.form_fields_array ?? [],
+        [selectedType?.form_fields_array],
     );
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -105,7 +103,7 @@ export default function ApplicationForm({
             url,
             {
                 application_type_id: selectedTypeId,
-                form_data: formData,
+                custom_fields: formData,
                 client_notes: clientNotes,
                 is_draft: true,
             },
@@ -168,7 +166,7 @@ export default function ApplicationForm({
             url,
             {
                 application_type_id: selectedTypeId,
-                form_data: formData,
+                custom_fields: formData,
                 client_notes: clientNotes,
                 is_draft: false,
             },
@@ -214,7 +212,7 @@ export default function ApplicationForm({
                             </p>
                         )}
                         <InputError
-                            message={errors[`form_data.${field.name}`]}
+                            message={errors[`custom_fields.${field.name}`]}
                         />
                     </div>
                 );
@@ -244,7 +242,7 @@ export default function ApplicationForm({
                             </p>
                         )}
                         <InputError
-                            message={errors[`form_data.${field.name}`]}
+                            message={errors[`custom_fields.${field.name}`]}
                         />
                     </div>
                 );
@@ -289,7 +287,7 @@ export default function ApplicationForm({
                             </p>
                         )}
                         <InputError
-                            message={errors[`form_data.${field.name}`]}
+                            message={errors[`custom_fields.${field.name}`]}
                         />
                     </div>
                 );
@@ -318,7 +316,7 @@ export default function ApplicationForm({
                             </p>
                         )}
                         <InputError
-                            message={errors[`form_data.${field.name}`]}
+                            message={errors[`custom_fields.${field.name}`]}
                         />
                     </div>
                 );
@@ -352,7 +350,7 @@ export default function ApplicationForm({
                             </p>
                         )}
                         <InputError
-                            message={errors[`form_data.${field.name}`]}
+                            message={errors[`custom_fields.${field.name}`]}
                         />
                     </div>
                 );

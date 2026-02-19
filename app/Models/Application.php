@@ -50,7 +50,8 @@ class Application extends Model
     ];
 
     protected $casts = [
-        'form_data' => 'array',
+        'tags' => 'array',
+        'custom_fields' => 'array',
         'total_fee' => 'decimal:2',
         'amount_paid' => 'decimal:2',
         'is_paid' => 'boolean',
@@ -382,8 +383,8 @@ class Application extends Model
 
     public function updateCompletionPercentage()
     {
-        $requiredFields = $this->applicationType->form_fields ?? [];
-        $formData = $this->form_data ?? [];
+        $requiredFields = $this->applicationType?->form_fields_array ?? [];
+        $formData = $this->custom_fields ?? [];
 
         if (empty($requiredFields)) {
             $this->completion_percentage = 100;
@@ -408,6 +409,24 @@ class Application extends Model
 
         $this->completion_percentage = ($completedFields / $totalFields) * 100;
         $this->save();
+    }
+
+    /**
+     * Backward-compatible alias for deprecated form_data attribute.
+     *
+     * @return array<string, mixed>
+     */
+    public function getFormDataAttribute(): array
+    {
+        return $this->custom_fields ?? [];
+    }
+
+    /**
+     * Backward-compatible alias for deprecated form_data attribute.
+     */
+    public function setFormDataAttribute(mixed $value): void
+    {
+        $this->attributes['custom_fields'] = is_array($value) ? json_encode($value) : null;
     }
 
     public function addToTimeline($action, $description, $metadata = null)

@@ -3,11 +3,15 @@
 namespace Database\Seeders;
 
 use App\Models\ApplicationType;
+use App\Models\FormField;
+use App\Models\FormFieldOption;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 
 class ApplicationTypeSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
         $types = [
             [
@@ -490,7 +494,88 @@ class ApplicationTypeSeeder extends Seeder
         ];
 
         foreach ($types as $type) {
-            ApplicationType::create($type);
+            $formFields = Arr::get($type, 'form_fields', []);
+            unset($type['form_fields']);
+
+            $applicationType = ApplicationType::create($type);
+            $this->syncFormFields($applicationType, $formFields);
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $formFields
+     */
+    private function syncFormFields(ApplicationType $applicationType, array $formFields): void
+    {
+        foreach ($formFields as $index => $fieldDefinition) {
+            $fieldName = (string) Arr::get($fieldDefinition, 'name', '');
+            if ($fieldName === '') {
+                continue;
+            }
+
+            $normalizedName = Str::of($fieldName)
+                ->lower()
+                ->replaceMatches('/[^a-z0-9_]+/', '_')
+                ->replaceMatches('/_+/', '_')
+                ->trim('_')
+                ->value();
+
+            if ($normalizedName === '') {
+                continue;
+            }
+
+            $fieldType = $this->mapFieldType((string) Arr::get($fieldDefinition, 'type', 'text'));
+
+            $field = FormField::query()->firstOrCreate(
+                ['name' => $normalizedName],
+                [
+                    'label' => (string) Arr::get($fieldDefinition, 'label', Str::headline($normalizedName)),
+                    'type' => $fieldType,
+                    'placeholder' => Arr::get($fieldDefinition, 'placeholder'),
+                    'validation_rules' => null,
+                    'is_active' => true,
+                ],
+            );
+
+            $applicationType->formFields()->syncWithoutDetaching([
+                $field->id => [
+                    'is_required' => (bool) Arr::get($fieldDefinition, 'required', false),
+                    'display_order' => $index + 1,
+                    'section' => null,
+                ],
+            ]);
+
+            $options = Arr::get($fieldDefinition, 'options', []);
+            if (! is_array($options) || ! in_array($fieldType, ['select', 'radio', 'checkbox'], true)) {
+                continue;
+            }
+
+            $displayOrder = 0;
+            foreach ($options as $value => $label) {
+                FormFieldOption::query()->updateOrCreate(
+                    ['form_field_id' => $field->id, 'value' => (string) $value],
+                    [
+                        'label' => (string) $label,
+                        'display_order' => $displayOrder,
+                    ],
+                );
+                $displayOrder++;
+            }
+        }
+    }
+
+    private function mapFieldType(string $legacyType): string
+    {
+        return match (strtolower(trim($legacyType))) {
+            'textarea' => 'textarea',
+            'dropdown', 'select' => 'select',
+            'date' => 'date',
+            'email' => 'email',
+            'number' => 'number',
+            'file' => 'file',
+            'checkbox' => 'checkbox',
+            'radio' => 'radio',
+            default => 'text',
+        };
     }
 }

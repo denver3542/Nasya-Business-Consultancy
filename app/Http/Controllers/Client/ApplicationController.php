@@ -643,7 +643,6 @@ class ApplicationController extends Controller
                     'formatted_fee' => $type->formatted_fee,
                     'estimated_duration' => $type->estimated_duration,
                     'required_documents' => $type->required_documents,
-                    'form_fields' => $type->form_fields,
                     'form_fields_array' => $type->form_fields_array,
                 ];
             }),
@@ -662,13 +661,14 @@ class ApplicationController extends Controller
         $submittedStatus = ApplicationStatus::where('slug', 'submitted')->firstOrFail();
 
         $isDraft = $request->boolean('is_draft', true);
+        $customFields = $request->input('custom_fields', $request->input('form_data', []));
 
         $application = Application::create([
             'user_id' => auth()->id(),
             'client_id' => $request->client_id,
             'application_type_id' => $request->application_type_id,
             'application_status_id' => $isDraft ? $draftStatus->id : $submittedStatus->id,
-            'form_data' => $request->form_data ?? [],
+            'custom_fields' => is_array($customFields) ? $customFields : [],
             'client_notes' => $request->client_notes,
             'total_fee' => $applicationType->base_fee,
             'completion_percentage' => 0,
@@ -751,7 +751,6 @@ class ApplicationController extends Controller
                     'formatted_fee' => $type->formatted_fee,
                     'estimated_duration' => $type->estimated_duration,
                     'required_documents' => $type->required_documents,
-                    'form_fields' => $type->form_fields,
                     'form_fields_array' => $type->form_fields_array,
                 ];
             }),
@@ -766,9 +765,10 @@ class ApplicationController extends Controller
         $this->authorize('update', $application);
 
         $isDraft = $request->boolean('is_draft', true);
+        $customFields = $request->input('custom_fields', $request->input('form_data', $application->custom_fields));
 
         $application->update([
-            'form_data' => $request->form_data ?? $application->form_data,
+            'custom_fields' => is_array($customFields) ? $customFields : ($application->custom_fields ?? []),
             'client_notes' => $request->client_notes,
         ]);
 
@@ -892,6 +892,7 @@ class ApplicationController extends Controller
     {
         return Inertia::render('applications/settings');
     }
+
     public function updateSettings(Request $request)
     {
         $request->user()->update($request->validated());

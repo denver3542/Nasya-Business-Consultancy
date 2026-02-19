@@ -17,7 +17,6 @@ class ApplicationType extends Model
         'description',
         'base_fee',
         'required_documents',
-        'form_fields',
         'requirements',
         'estimated_processing_days',
         'icon',
@@ -33,7 +32,6 @@ class ApplicationType extends Model
     {
         return [
             'required_documents' => 'array',
-            'form_fields' => 'array',
             'requirements' => 'array',
             'base_fee' => 'decimal:2',
             'is_active' => 'boolean',
@@ -61,14 +59,11 @@ class ApplicationType extends Model
     }
 
     /**
-     * Get all form fields formatted for frontend (merges new structure with legacy JSON).
-     *
      * @return array<int, array<string, mixed>>
      */
     public function getFormFieldsArrayAttribute(): array
     {
-        // First, try to get fields from the new relational structure
-        $relationalFields = $this->formFields()
+        return $this->formFields()
             ->with('options')
             ->get()
             ->map(function (FormField $field) {
@@ -89,14 +84,6 @@ class ApplicationType extends Model
                 ];
             })
             ->toArray();
-
-        // If relational fields exist, use them
-        if (count($relationalFields) > 0) {
-            return $relationalFields;
-        }
-
-        // Fall back to legacy JSON form_fields if no relational fields
-        return $this->form_fields ?? [];
     }
 
     // Scopes

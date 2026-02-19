@@ -287,8 +287,13 @@ export default function Show({
                                             </div>
                                         </div>
 
-                                        {application.form_data &&
-                                            Object.keys(application.form_data)
+                                        {application.custom_fields &&
+                                            Object.keys(
+                                                application.custom_fields,
+                                            ).filter(
+                                                (fieldKey) =>
+                                                    fieldKey !== '__legacy',
+                                            )
                                                 .length > 0 && (
                                                 <>
                                                     <Separator />
@@ -298,12 +303,14 @@ export default function Show({
                                                         </h3>
                                                         <div className="grid gap-4 md:grid-cols-2">
                                                             {Object.entries(
-                                                                application.form_data,
+                                                                application.custom_fields,
                                                             ).map(
                                                                 ([
                                                                     key,
                                                                     value,
-                                                                ]) => (
+                                                                ]) =>
+                                                                    key ===
+                                                                    '__legacy' ? null : (
                                                                     <div
                                                                         key={
                                                                             key
