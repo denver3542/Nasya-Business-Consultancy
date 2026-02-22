@@ -10,6 +10,32 @@ class Application extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * @var list<string>
+     */
+    private const CLIENT_PROFILE_FORM_KEYS = [
+        'name',
+        'full_name',
+        'first_name',
+        'middle_name',
+        'last_name',
+        'email',
+        'phone',
+        'phone_number',
+        'contact_number',
+        'mobile_number',
+        'address',
+        'address_line1',
+        'address_line2',
+        'city',
+        'state',
+        'country',
+        'postal_code',
+        'zip',
+        'zip_code',
+        'date_of_birth',
+    ];
+
     protected $fillable = [
         'application_number',
         'user_id',
@@ -382,7 +408,23 @@ class Application extends Model
 
     public function updateCompletionPercentage()
     {
-        $requiredFields = $this->applicationType->form_fields ?? [];
+        $serviceFields = $this->service()
+            ->with('formFields')
+            ->first()?->formFields
+            ?->map(fn (FormField $field): array => [
+                'name' => $field->name,
+                'required' => false,
+            ])
+            ->all() ?? [];
+
+        $requiredFields = collect($serviceFields ?: ($this->applicationType->form_fields_array ?? []))
+            ->reject(function (array $field): bool {
+                $fieldName = $field['name'] ?? null;
+
+                return in_array($fieldName, self::CLIENT_PROFILE_FORM_KEYS, true);
+            })
+            ->values()
+            ->all();
         $formData = $this->form_data ?? [];
 
         if (empty($requiredFields)) {

@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,8 +10,16 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import type { UserService } from '@/types/application';
 
+interface ServiceFormField {
+    id: number;
+    name: string;
+    label: string;
+    type: string;
+}
+
 interface EditServiceProps {
-    service: UserService;
+    service: UserService & { form_field_ids?: number[] };
+    availableFormFields: ServiceFormField[];
 }
 
 const colorOptions = [
@@ -24,7 +33,7 @@ const colorOptions = [
     { value: '#6b7280', label: 'Gray' },
 ];
 
-export default function Edit({ service }: EditServiceProps) {
+export default function Edit({ service, availableFormFields }: EditServiceProps) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Dashboard', href: '/dashboard' },
         { title: 'Services', href: '/client/services' },
@@ -36,6 +45,7 @@ export default function Edit({ service }: EditServiceProps) {
         name: service.name,
         description: service.description || '',
         color: service.color,
+        form_field_ids: service.form_field_ids || [],
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -108,6 +118,54 @@ export default function Edit({ service }: EditServiceProps) {
                                     </div>
                                     {errors.color && (
                                         <p className="text-sm text-destructive">{errors.color}</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label>Service Fields</Label>
+                                    {availableFormFields.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">
+                                            No reusable fields available.
+                                        </p>
+                                    ) : (
+                                        <div className="grid gap-3 rounded-lg border p-3 md:grid-cols-2">
+                                            {availableFormFields.map((field) => (
+                                                <label
+                                                    key={field.id}
+                                                    className="flex items-start gap-2 rounded-md border p-2"
+                                                >
+                                                    <Checkbox
+                                                        checked={data.form_field_ids.includes(field.id)}
+                                                        onCheckedChange={(checked) => {
+                                                            if (checked) {
+                                                                if (data.form_field_ids.includes(field.id)) {
+                                                                    return;
+                                                                }
+                                                                setData('form_field_ids', [
+                                                                    ...data.form_field_ids,
+                                                                    field.id,
+                                                                ]);
+                                                                return;
+                                                            }
+
+                                                            setData(
+                                                                'form_field_ids',
+                                                                data.form_field_ids.filter((id) => id !== field.id),
+                                                            );
+                                                        }}
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-medium">{field.label}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {field.name} · {field.type}
+                                                        </p>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {errors.form_field_ids && (
+                                        <p className="text-sm text-destructive">{errors.form_field_ids}</p>
                                     )}
                                 </div>
 

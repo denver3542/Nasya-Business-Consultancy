@@ -10,6 +10,7 @@ import {
     UserCheck,
     XCircle,
     CreditCard,
+    Trash,
 } from 'lucide-react';
 import type { ApplicationTimeline as TimelineType } from '@/types';
 import { cn } from '@/lib/utils';
@@ -32,6 +33,13 @@ const getTimelineIcon = (action: string) => {
         status_changed: <RefreshCw className="size-4" />,
         assigned: <UserCheck className="size-4" />,
         completed: <Flag className="size-4" />,
+        comment_added: <PlusCircle className="size-4" />,
+        comment_reply_added: <PlusCircle className="size-4" />,
+        comment_deleted: <XCircle className="size-4" />,
+        document_deleted: <Trash className="size-4" />,
+        watchers_updated: <UserCheck className="size-4" />,
+        dates_updated: <RefreshCw className="size-4" />,
+        email_sent: <Mail className="size-4" />,
     };
 
     return iconMap[action] || <Circle className="size-4" />;
@@ -50,6 +58,13 @@ const getTimelineColor = (action: string) => {
         status_changed: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900 dark:text-yellow-200',
         assigned: 'text-purple-600 bg-purple-100 dark:bg-purple-900 dark:text-purple-200',
         completed: 'text-green-600 bg-green-100 dark:bg-green-900 dark:text-green-200',
+        comment_added: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900 dark:text-indigo-200',
+        comment_reply_added: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900 dark:text-indigo-200',
+        comment_deleted: 'text-red-600 bg-red-100 dark:bg-red-900 dark:text-red-200',
+        document_deleted: 'text-red-600 bg-red-100 dark:bg-red-900 dark:text-red-200',
+        watchers_updated: 'text-purple-600 bg-purple-100 dark:bg-purple-900 dark:text-purple-200',
+        dates_updated: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900 dark:text-yellow-200',
+        email_sent: 'text-blue-600 bg-blue-100 dark:bg-blue-900 dark:text-blue-200',
     };
 
     return colorMap[action] || colorMap.updated;
@@ -109,4 +124,3 @@ export default function ApplicationTimeline({ timeline, className }: Props) {
         </div>
     );
 }
-

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreServiceRequest extends FormRequest
 {
@@ -25,6 +26,11 @@ class StoreServiceRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
             'color' => ['nullable', 'string', 'max:7', 'regex:/^#[a-fA-F0-9]{6}$/'],
+            'form_field_ids' => ['nullable', 'array'],
+            'form_field_ids.*' => [
+                'integer',
+                Rule::exists('form_fields', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
         ];
     }
 
@@ -40,6 +46,8 @@ class StoreServiceRequest extends FormRequest
             'name.max' => 'Service name cannot exceed 255 characters.',
             'description.max' => 'Description cannot exceed 1000 characters.',
             'color.regex' => 'Color must be a valid hex color (e.g., #3b82f6).',
+            'form_field_ids.array' => 'Service fields must be a valid list.',
+            'form_field_ids.*.exists' => 'One or more selected service fields are invalid.',
         ];
     }
 }

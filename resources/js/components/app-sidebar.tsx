@@ -25,6 +25,7 @@ import { dashboard } from '@/routes';
 import admin from '@/routes/admin';
 import applications from '@/routes/applications';
 import client from '@/routes/client';
+import clients from '@/routes/clients';
 import type { NavItem } from '@/types';
 
 import AppLogo from './app-logo';
@@ -39,6 +40,11 @@ const mainNavItems: NavItem[] = [
         title: 'Services',
         href: client.services.index(),
         icon: Kanban,
+    },
+    {
+        title: 'Clients',
+        href: clients.index(),
+        icon: Users,
     },
     {
         title: 'User Management',

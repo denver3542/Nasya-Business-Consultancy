@@ -51,6 +51,15 @@ class FormField extends Model
     }
 
     /**
+     * Get services that use this reusable field.
+     */
+    public function services(): BelongsToMany
+    {
+        return $this->belongsToMany(Service::class, 'service_form_field')
+            ->withTimestamps();
+    }
+
+    /**
      * Scope for active fields only.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<FormField>  $query

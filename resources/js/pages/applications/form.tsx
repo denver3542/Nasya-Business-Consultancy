@@ -1,5 +1,5 @@
 import { Transition } from '@headlessui/react';
-import { Form, Head, router } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { Save, Send } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -28,29 +28,44 @@ import type {
     FormField,
 } from '@/types';
 
+interface ClientOption {
+    id: number;
+    name: string;
+    email: string;
+    phone: string | null;
+    profile_completed: boolean;
+}
+
+interface ServiceOption {
+    id: number;
+    user_id: number;
+    name: string;
+    description?: string | null;
+    color?: string | null;
+    form_fields_array?: FormField[];
+}
+
 interface ApplicationFormProps {
-    Client: {
-        id: number;
-        name: string;
-        email: string;
-        phone: string;
-        profile_completed: boolean;
-    };
-    clients: Client[];
+    clients?: ClientOption[];
+    services?: ServiceOption[];
     application?: Application;
-    applicationTypes: ApplicationType[];
+    applicationTypes?: ApplicationType[];
     errors: Record<string, string>;
 }
 
 export default function ApplicationForm({
-    clients,
+    clients = [],
+    services = [],
     application,
-    applicationTypes,
+    applicationTypes = [],
     errors,
 }: ApplicationFormProps) {
     const isEditing = !!application;
-    const [selectedTypeId, setSelectedTypeId] = useState<number | null>(
+    const [selectedTypeId] = useState<number | null>(
         application?.application_type_id || null,
+    );
+    const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
+        application?.service_id || null,
     );
     const [formData, setFormData] = useState<Record<string, unknown>>(
         application?.form_data || {},
@@ -69,11 +84,51 @@ export default function ApplicationForm({
     );
 
     const selectedType = applicationTypes.find((t) => t.id === selectedTypeId);
-    // Use form_fields_array (from relational structure) if available, otherwise fall back to form_fields (JSON)
-    const formFields = useMemo(
+    const selectedService = services.find((service) => service.id === selectedServiceId);
+
+    const clientProfileFieldNames = useMemo(
         () =>
-            selectedType?.form_fields_array ?? selectedType?.form_fields ?? [],
-        [selectedType?.form_fields_array, selectedType?.form_fields],
+            new Set([
+                'name',
+                'full_name',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'email',
+                'phone',
+                'phone_number',
+                'contact_number',
+                'mobile_number',
+                'address',
+                'address_line1',
+                'address_line2',
+                'city',
+                'state',
+                'country',
+                'postal_code',
+                'zip',
+                'zip_code',
+                'date_of_birth',
+            ]),
+        [],
+    );
+
+    const servicesForSelectedClient = useMemo(() => services, [services]);
+
+    const formFields = useMemo(() => {
+        if (isEditing) {
+            return selectedType?.form_fields_array ?? selectedType?.form_fields ?? [];
+        }
+
+        return selectedService?.form_fields_array ?? [];
+    }, [isEditing, selectedService?.form_fields_array, selectedType?.form_fields_array, selectedType?.form_fields]);
+
+    const applicationSpecificFields = useMemo(
+        () =>
+            formFields.filter(
+                (field) => !clientProfileFieldNames.has(field.name),
+            ),
+        [formFields, clientProfileFieldNames],
     );
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -104,7 +159,10 @@ export default function ApplicationForm({
         router[method](
             url,
             {
-                application_type_id: selectedTypeId,
+                client_id: selectedClientId,
+                ...(isEditing
+                    ? { application_type_id: selectedTypeId }
+                    : { service_id: selectedServiceId }),
                 form_data: formData,
                 client_notes: clientNotes,
                 is_draft: true,
@@ -121,17 +179,24 @@ export default function ApplicationForm({
                 },
             },
         );
-    }, [isEditing, application?.id, selectedTypeId, formData, clientNotes]);
+    }, [
+        isEditing,
+        application?.id,
+        selectedClientId,
+        selectedTypeId,
+        selectedServiceId,
+        formData,
+        clientNotes,
+    ]);
 
-    // Calculate completion percentage
     useEffect(() => {
-        if (formFields.length === 0) {
+        if (applicationSpecificFields.length === 0) {
             setCompletionPercentage(100);
             return;
         }
 
-        const totalFields = formFields.length;
-        const completedFields = formFields.filter((field) => {
+        const totalFields = applicationSpecificFields.length;
+        const completedFields = applicationSpecificFields.filter((field) => {
             const value = formData[field.name];
             if (field.required) {
                 return value !== undefined && value !== null && value !== '';
@@ -142,9 +207,8 @@ export default function ApplicationForm({
         setCompletionPercentage(
             Math.round((completedFields / totalFields) * 100),
         );
-    }, [formData, formFields]);
+    }, [formData, applicationSpecificFields]);
 
-    // Auto-save draft every 30 seconds
     useEffect(() => {
         if (!isEditing || !application?.is_draft) {
             return;
@@ -167,7 +231,10 @@ export default function ApplicationForm({
         router[method](
             url,
             {
-                application_type_id: selectedTypeId,
+                client_id: selectedClientId,
+                ...(isEditing
+                    ? { application_type_id: selectedTypeId }
+                    : { service_id: selectedServiceId }),
                 form_data: formData,
                 client_notes: clientNotes,
                 is_draft: false,
@@ -367,7 +434,6 @@ export default function ApplicationForm({
             <Head title={isEditing ? 'Edit Application' : 'New Application'} />
 
             <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold">
@@ -389,125 +455,121 @@ export default function ApplicationForm({
                             leaveFrom="opacity-100"
                             leaveTo="opacity-0"
                         >
-                            <p className="text-sm text-muted-foreground">
-                                Saved.
-                            </p>
+                            <p className="text-sm text-muted-foreground">Saved.</p>
                         </Transition>
                     </div>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-3">
                     <div className="space-y-4 lg:col-span-2">
-                        {/* Application Type Selection */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Application Type</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="application-type">
-                                        Select Application Type
-                                        <span className="text-red-500">*</span>
-                                    </Label>
-                                    <Select
-                                        value={selectedTypeId?.toString() || ''}
-                                        onValueChange={(val) =>
-                                            setSelectedTypeId(parseInt(val))
-                                        }
-                                        disabled={isEditing}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Choose an application type" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {applicationTypes.map((type) => (
-                                                <SelectItem
-                                                    key={type.id}
-                                                    value={type.id.toString()}
-                                                >
-                                                    {type.name} -{' '}
-                                                    {type.formatted_fee ||
-                                                        `₱${type.base_fee}`}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError
-                                        message={errors.application_type_id}
-                                    />
-                                </div>
-
-                                {selectedType && (
-                                    <div className="space-y-2 rounded-lg bg-muted p-4">
-                                        <p className="text-sm font-medium">
-                                            {selectedType.name}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {selectedType.description}
-                                        </p>
-                                        {selectedType.estimated_duration && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Estimated processing time:{' '}
-                                                {
-                                                    selectedType.estimated_duration
-                                                }
-                                            </p>
-                                        )}
+                        {clients.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Client</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="client">Select Client</Label>
+                                        <Select
+                                            value={selectedClientId?.toString() || ''}
+                                            onValueChange={(val) =>
+                                                setSelectedClientId(parseInt(val, 10))
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Choose a client" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {clients.map((client) => (
+                                                    <SelectItem
+                                                        key={client.id}
+                                                        value={client.id.toString()}
+                                                    >
+                                                        {client.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <InputError message={errors.client_id} />
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                        {/* Dynamic Form Fields */}
-                        {selectedType && formFields.length > 0 && (
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {!isEditing && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Service</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="service">
+                                            Select Service
+                                            <span className="text-red-500">*</span>
+                                        </Label>
+                                        <Select
+                                            value={selectedServiceId?.toString() || ''}
+                                            onValueChange={(val) =>
+                                                setSelectedServiceId(parseInt(val, 10))
+                                            }
+                                            disabled={servicesForSelectedClient.length === 0}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue
+                                                    placeholder={
+                                                        servicesForSelectedClient.length === 0
+                                                            ? 'No services available'
+                                                            : 'Choose a service'
+                                                    }
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {servicesForSelectedClient.length === 0 ? (
+                                                    <SelectItem value="none" disabled>
+                                                        No services available for this client
+                                                    </SelectItem>
+                                                ) : (
+                                                    servicesForSelectedClient.map((service) => (
+                                                        <SelectItem
+                                                            key={service.id}
+                                                            value={service.id.toString()}
+                                                        >
+                                                            {service.name}
+                                                        </SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <InputError message={errors.service_id} />
+                                    </div>
+
+                                    {selectedService && (
+                                        <div className="space-y-2 rounded-lg bg-muted p-4">
+                                            <p className="text-sm font-medium">{selectedService.name}</p>
+                                            {selectedService.description && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    {selectedService.description}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {applicationSpecificFields.length > 0 && (
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Application Details</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="grid gap-4 md:grid-cols-2">
-                                        {formFields.map(renderField)}
+                                        {applicationSpecificFields.map(renderField)}
                                     </div>
                                 </CardContent>
                             </Card>
                         )}
-                        {/* Client Selection */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Client</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    <Label htmlFor="client">
-                                        Select Client
-                                    </Label>
-                                    <Select
-                                        value={
-                                            selectedClientId?.toString() || ''
-                                        }
-                                        onValueChange={(val) =>
-                                            setSelectedClientId(parseInt(val))
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Choose a client" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {clients.map((client) => (
-                                                <SelectItem
-                                                    key={client.id}
-                                                    value={client.id.toString()}
-                                                >
-                                                    {client.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError message={errors.client_id} />
-                                </div>
-                            </CardContent>
-                        </Card>
 
-                        {/* Client Notes */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Additional Notes</CardTitle>
@@ -522,16 +584,13 @@ export default function ApplicationForm({
                                         className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                                         placeholder="Enter any additional information or special requests..."
                                         value={clientNotes}
-                                        onChange={(e) =>
-                                            setClientNotes(e.target.value)
-                                        }
+                                        onChange={(e) => setClientNotes(e.target.value)}
                                     />
                                     <InputError message={errors.client_notes} />
                                 </div>
                             </CardContent>
                         </Card>
 
-                        {/* Documents Section (only when editing) */}
                         {isEditing &&
                             application.documents &&
                             application.documents.length > 0 && (
@@ -555,9 +614,7 @@ export default function ApplicationForm({
                             )}
                     </div>
 
-                    {/* Sidebar */}
                     <div className="space-y-4">
-                        {/* Progress Card */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Completion Progress</CardTitle>
@@ -565,9 +622,7 @@ export default function ApplicationForm({
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between text-sm">
-                                        <span className="text-muted-foreground">
-                                            Progress
-                                        </span>
+                                        <span className="text-muted-foreground">Progress</span>
                                         <span className="font-medium">
                                             {completionPercentage}%
                                         </span>
@@ -582,37 +637,9 @@ export default function ApplicationForm({
                                     </div>
                                 </div>
                                 <Separator />
-                                <div className="space-y-2 text-sm">
-                                    {selectedType && (
-                                        <>
-                                            <div className="flex justify-between">
-                                                <span className="text-muted-foreground">
-                                                    Base Fee:
-                                                </span>
-                                                <span className="font-medium">
-                                                    {selectedType.formatted_fee ||
-                                                        `₱${selectedType.base_fee}`}
-                                                </span>
-                                            </div>
-                                            {selectedType.estimated_duration && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-muted-foreground">
-                                                        Est. Duration:
-                                                    </span>
-                                                    <span className="font-medium">
-                                                        {
-                                                            selectedType.estimated_duration
-                                                        }
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
                             </CardContent>
                         </Card>
 
-                        {/* Payment Summary (only when editing) */}
                         {isEditing &&
                             application.payments &&
                             application.payments.length > 0 && (
@@ -626,14 +653,13 @@ export default function ApplicationForm({
                                 />
                             )}
 
-                        {/* Action Buttons */}
                         <Card>
                             <CardContent className="space-y-2 pt-6">
                                 <Button
                                     className="w-full"
                                     onClick={handleSubmit}
                                     disabled={
-                                        !selectedTypeId ||
+                                        (!isEditing && (!selectedClientId || !selectedServiceId)) ||
                                         completionPercentage < 100 ||
                                         isSubmitting ||
                                         isSaving
@@ -656,7 +682,7 @@ export default function ApplicationForm({
                                     className="w-full"
                                     onClick={handleSaveDraft}
                                     disabled={
-                                        !selectedTypeId ||
+                                        (!isEditing && (!selectedClientId || !selectedServiceId)) ||
                                         isSaving ||
                                         isSubmitting
                                     }

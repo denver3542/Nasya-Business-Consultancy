@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,11 +26,23 @@ const colorOptions = [
     { value: '#6b7280', label: 'Gray' },
 ];
 
-export default function Create() {
+interface ServiceFormField {
+    id: number;
+    name: string;
+    label: string;
+    type: string;
+}
+
+interface CreateServiceProps {
+    availableFormFields: ServiceFormField[];
+}
+
+export default function Create({ availableFormFields }: CreateServiceProps) {
     const { data, setData, post, processing, errors } = useForm({
         name: '',
         description: '',
         color: '#3b82f6',
+        form_field_ids: [] as number[],
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -102,6 +115,54 @@ export default function Create() {
                                     </div>
                                     {errors.color && (
                                         <p className="text-sm text-destructive">{errors.color}</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label>Service Fields</Label>
+                                    {availableFormFields.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">
+                                            No reusable fields available.
+                                        </p>
+                                    ) : (
+                                        <div className="grid gap-3 rounded-lg border p-3 md:grid-cols-2">
+                                            {availableFormFields.map((field) => (
+                                                <label
+                                                    key={field.id}
+                                                    className="flex items-start gap-2 rounded-md border p-2"
+                                                >
+                                                    <Checkbox
+                                                        checked={data.form_field_ids.includes(field.id)}
+                                                        onCheckedChange={(checked) => {
+                                                            if (checked) {
+                                                                if (data.form_field_ids.includes(field.id)) {
+                                                                    return;
+                                                                }
+                                                                setData('form_field_ids', [
+                                                                    ...data.form_field_ids,
+                                                                    field.id,
+                                                                ]);
+                                                                return;
+                                                            }
+
+                                                            setData(
+                                                                'form_field_ids',
+                                                                data.form_field_ids.filter((id) => id !== field.id),
+                                                            );
+                                                        }}
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-medium">{field.label}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {field.name} · {field.type}
+                                                        </p>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {errors.form_field_ids && (
+                                        <p className="text-sm text-destructive">{errors.form_field_ids}</p>
                                     )}
                                 </div>
 

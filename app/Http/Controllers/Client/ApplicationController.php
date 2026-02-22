@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\ApplicationStatus;
 use App\Models\ApplicationType;
+use App\Models\FormField;
+use App\Models\Service;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +15,32 @@ use Inertia\Inertia;
 
 class ApplicationController extends Controller
 {
+    /**
+     * @var list<string>
+     */
+    private const CLIENT_PROFILE_FORM_KEYS = [
+        'name',
+        'full_name',
+        'first_name',
+        'middle_name',
+        'last_name',
+        'email',
+        'phone',
+        'phone_number',
+        'contact_number',
+        'mobile_number',
+        'address',
+        'address_line1',
+        'address_line2',
+        'city',
+        'state',
+        'country',
+        'postal_code',
+        'zip',
+        'zip_code',
+        'date_of_birth',
+    ];
+
     /**
      * Display applications in list view.
      */
@@ -612,8 +640,6 @@ class ApplicationController extends Controller
      */
     public function create()
     {
-        // $this->authorize('create', Application::class);
-        // Get all clients
         $clients = User::role('client')
             ->with('profile')
             ->where('is_active', true)
@@ -626,27 +652,53 @@ class ApplicationController extends Controller
                     'email' => $user->email,
                     'phone' => $user->phone,
                     'profile_completed' => $user->profile_completed ?? false,
+                    'profile' => [
+                        'date_of_birth' => $user->profile?->date_of_birth?->toDateString(),
+                        'address' => $user->profile?->address,
+                        'city' => $user->profile?->city,
+                        'state' => $user->profile?->state,
+                        'country' => $user->profile?->country,
+                        'postal_code' => $user->profile?->postal_code,
+                    ],
                 ];
             });
 
-        $applicationTypes = ApplicationType::active()->get();
+        $services = Service::query()
+            ->with(['formFields.options'])
+            ->orderBy('name')
+            ->get()
+            ->map(function (Service $service): array {
+                return [
+                    'id' => $service->id,
+                    'user_id' => $service->user_id,
+                    'name' => $service->name,
+                    'description' => $service->description,
+                    'color' => $service->color,
+                    'form_fields_array' => $service->formFields
+                        ->map(function (FormField $field): array {
+                            return [
+                                'id' => $field->id,
+                                'name' => $field->name,
+                                'label' => $field->label,
+                                'type' => $field->type,
+                                'required' => false,
+                                'placeholder' => $field->placeholder,
+                                'help_text' => $field->help_text,
+                                'validation' => $field->validation_rules,
+                                'options' => $field->options->map(fn ($option): array => [
+                                    'label' => $option->label,
+                                    'value' => $option->value,
+                                ])->toArray(),
+                            ];
+                        })
+                        ->values()
+                        ->all(),
+                ];
+            });
 
         return Inertia::render('applications/form', [
             'clients' => $clients,
-            'applicationTypes' => ApplicationType::active()->get()->map(function ($type) {
-                return [
-                    'id' => $type->id,
-                    'name' => $type->name,
-                    'slug' => $type->slug,
-                    'description' => $type->description,
-                    'base_fee' => $type->base_fee,
-                    'formatted_fee' => $type->formatted_fee,
-                    'estimated_duration' => $type->estimated_duration,
-                    'required_documents' => $type->required_documents,
-                    'form_fields' => $type->form_fields,
-                    'form_fields_array' => $type->form_fields_array,
-                ];
-            }),
+            'services' => $services,
         ]);
     }
 
@@ -655,22 +707,53 @@ class ApplicationController extends Controller
      */
     public function store(\App\Http\Requests\StoreApplicationRequest $request)
     {
-        // $this->authorize('create', Application::class);
-
-        $applicationType = ApplicationType::findOrFail($request->application_type_id);
         $draftStatus = ApplicationStatus::where('slug', 'draft')->firstOrFail();
         $submittedStatus = ApplicationStatus::where('slug', 'submitted')->firstOrFail();
+        $defaultApplicationType = ApplicationType::query()->active()->firstOrFail();
+        $client = User::query()
+            ->role('client')
+            ->with('profile')
+            ->where('is_active', true)
+            ->findOrFail($request->integer('client_id'));
+        $service = Service::query()
+            ->with(['formFields', 'stages'])
+            ->findOrFail($request->integer('service_id'));
+        $serviceStage = $service->stages->sortBy('position')->first();
+
+        if (! $serviceStage) {
+            $serviceStage = $service->stages()->create([
+                'name' => 'To Do',
+                'position' => 0,
+            ]);
+        }
+        $clientFormData = $this->buildClientProfileFormData($client);
+        $formData = array_merge($request->input('form_data', []), $clientFormData);
+        $serviceFieldNames = $service->formFields
+            ->pluck('name')
+            ->filter()
+            ->values()
+            ->all();
+        $formData = collect($formData)
+            ->only(array_merge(
+                count($serviceFieldNames) > 0
+                    ? $serviceFieldNames
+                    : array_keys($request->input('form_data', [])),
+                self::CLIENT_PROFILE_FORM_KEYS
+            ))
+            ->all();
 
         $isDraft = $request->boolean('is_draft', true);
 
         $application = Application::create([
-            'user_id' => auth()->id(),
-            'client_id' => $request->client_id,
-            'application_type_id' => $request->application_type_id,
+            'user_id' => $client->id,
+            'application_type_id' => $defaultApplicationType->id,
             'application_status_id' => $isDraft ? $draftStatus->id : $submittedStatus->id,
-            'form_data' => $request->form_data ?? [],
+            'service_id' => $service->id,
+            'service_stage_id' => $serviceStage->id,
+            'service_position' => (($serviceStage->applications()->max('service_position') ?? 0) + 1),
+            'form_data' => $formData,
             'client_notes' => $request->client_notes,
-            'total_fee' => $applicationType->base_fee,
+            'total_fee' => $defaultApplicationType->base_fee,
             'completion_percentage' => 0,
             'submitted_at' => $isDraft ? null : now(),
         ]);
@@ -694,6 +777,63 @@ class ApplicationController extends Controller
     }
 
     /**
+     * @return array<string, string|null>
+     */
+    protected function buildClientProfileFormData(User $client): array
+    {
+        [$firstName, $middleName, $lastName] = $this->splitClientName($client->name);
+
+        return [
+            'name' => $client->name,
+            'full_name' => $client->name,
+            'first_name' => $firstName,
+            'middle_name' => $middleName,
+            'last_name' => $lastName,
+            'email' => $client->email,
+            'phone' => $client->phone,
+            'phone_number' => $client->phone,
+            'contact_number' => $client->phone,
+            'mobile_number' => $client->phone,
+            'address' => $client->profile?->address,
+            'address_line1' => $client->profile?->address,
+            'address_line2' => null,
+            'city' => $client->profile?->city,
+            'state' => $client->profile?->state,
+            'country' => $client->profile?->country,
+            'postal_code' => $client->profile?->postal_code,
+            'zip' => $client->profile?->postal_code,
+            'zip_code' => $client->profile?->postal_code,
+            'date_of_birth' => $client->profile?->date_of_birth?->toDateString(),
+        ];
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null, 2: string|null}
+     */
+    protected function splitClientName(?string $name): array
+    {
+        $parts = $name ? preg_split('/\s+/', trim($name)) : [];
+
+        if (! is_array($parts) || count($parts) === 0) {
+            return [null, null, null];
+        }
+
+        if (count($parts) === 1) {
+            return [$parts[0], null, null];
+        }
+
+        if (count($parts) === 2) {
+            return [$parts[0], null, $parts[1]];
+        }
+
+        $firstName = array_shift($parts);
+        $lastName = array_pop($parts);
+        $middleName = implode(' ', $parts);
+
+        return [$firstName, $middleName ?: null, $lastName ?: null];
+    }
+
+    /**
      * Display the specified application.
      */
     public function show(Application $application)
@@ -702,6 +842,7 @@ class ApplicationController extends Controller
 
         $application->load([
             'user',
+            'user.profile',
             'applicationType',
             'status',
             'assignedStaff',
@@ -709,9 +850,22 @@ class ApplicationController extends Controller
             'timeline.user',
             'payments',
             'watchers',
+            'comments.user',
+            'comments.replies.user',
         ]);
 
         $user = auth()->user();
+        $staffUsers = User::query()
+            ->role(['admin', 'staff'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+        $availableTags = Application::query()
+            ->whereNotNull('tags')
+            ->pluck('tags')
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values();
 
         return Inertia::render('applications/show', [
             'application' => array_merge($application->toArray(), [
@@ -719,6 +873,8 @@ class ApplicationController extends Controller
                 'is_draft' => $application->is_draft,
                 'remaining_balance' => $application->remaining_balance,
             ]),
+            'staffUsers' => $staffUsers,
+            'availableTags' => $availableTags,
             'canEdit' => $user->can('update', $application),
             'canApprove' => $user->can('approve', $application) && $application->status->slug === 'submitted',
             'canReject' => $user->can('reject', $application) && $application->status->slug === 'submitted',
@@ -892,6 +1048,7 @@ class ApplicationController extends Controller
     {
         return Inertia::render('applications/settings');
     }
+
     public function updateSettings(Request $request)
     {
         $request->user()->update($request->validated());

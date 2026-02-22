@@ -42,9 +42,12 @@ class ApplicationPolicy
      */
     public function update(User $user, Application $application)
     {
-        // Only the owner can update, and only if it's in draft status
+        if ($user->hasAnyRole(['admin', 'staff'])) {
+            return true;
+        }
+
         return $user->id === $application->user_id &&
-               $application->status->slug === 'draft';
+            $application->status->slug === 'draft';
     }
 
     /**

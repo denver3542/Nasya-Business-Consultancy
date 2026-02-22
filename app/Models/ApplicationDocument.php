@@ -75,7 +75,10 @@ class ApplicationDocument extends Model
 
     public function getDownloadUrlAttribute()
     {
-        return route('client.documents.download', $this->id);
+        return route('applications.documents.download', [
+            'application' => $this->application_id,
+            'document' => $this->id,
+        ]);
     }
 
     public function getVerificationBadgeAttribute()

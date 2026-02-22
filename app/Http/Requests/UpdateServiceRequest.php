@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Service;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateServiceRequest extends FormRequest
 {
@@ -30,6 +31,11 @@ class UpdateServiceRequest extends FormRequest
             'color' => ['nullable', 'string', 'max:7', 'regex:/^#[a-fA-F0-9]{6}$/'],
             'is_starred' => ['nullable', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],
+            'form_field_ids' => ['nullable', 'array'],
+            'form_field_ids.*' => [
+                'integer',
+                Rule::exists('form_fields', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
         ];
     }
 
@@ -46,6 +52,8 @@ class UpdateServiceRequest extends FormRequest
             'description.max' => 'Description cannot exceed 1000 characters.',
             'color.regex' => 'Color must be a valid hex color (e.g., #3b82f6).',
             'position.min' => 'Position cannot be negative.',
+            'form_field_ids.array' => 'Service fields must be a valid list.',
+            'form_field_ids.*.exists' => 'One or more selected service fields are invalid.',
         ];
     }
 }

@@ -1,8 +1,16 @@
-export interface User {
+export interface ApplicationUser {
     id: number;
     name: string;
     email: string;
+    phone?: string | null;
     avatar?: string;
+    profile?: {
+        address?: string | null;
+        city?: string | null;
+        state?: string | null;
+        country?: string | null;
+        postal_code?: string | null;
+    };
 }
 
 export interface ApplicationType {
@@ -40,15 +48,19 @@ export interface Application {
     amount_paid: number;
     is_paid: boolean;
     submitted_at: string | null;
+    approved_at?: string | null;
+    completed_at?: string | null;
     created_at: string;
     updated_at: string;
+    client_notes?: string | null;
+    staff_notes?: string | null;
 
     // Relationships
-    user: User;
+    user: ApplicationUser;
     application_type: ApplicationType;
     status: ApplicationStatus;
-    assigned_staff: User | null;
-    watchers: User[];
+    assigned_staff: ApplicationUser | null;
+    watchers: ApplicationUser[];
 
     // Computed
     priority_label: string;
@@ -56,8 +68,52 @@ export interface Application {
     is_overdue: boolean;
     days_until_due: number | null;
     formatted_total_fee: string;
+    remaining_balance?: number;
     can_edit: boolean;
     can_submit: boolean;
+}
+
+export interface ApplicationComment {
+    id: number;
+    application_id: number;
+    user_id: number;
+    parent_id: number | null;
+    comment: string;
+    attachments: string[] | null;
+    likes: number[] | null;
+    mentions: number[] | null;
+    created_at: string;
+    user: ApplicationUser;
+    replies: ApplicationComment[];
+}
+
+export interface ApplicationDocument {
+    id: number;
+    application_id: number;
+    document_type: string;
+    file_name: string;
+    file_path: string;
+    file_type: string;
+    file_size: number;
+    verification_status: string;
+    created_at: string;
+}
+
+export interface ApplicationTimeline {
+    id: number;
+    action: string;
+    description: string;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+    user?: ApplicationUser | null;
+}
+
+export interface Payment {
+    id: number;
+    amount: number;
+    payment_date: string;
+    payment_method?: string;
+    reference_number?: string;
 }
 
 export interface Board {

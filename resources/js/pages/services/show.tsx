@@ -2,7 +2,6 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     DndContext,
     DragEndEvent,
-    DragOverEvent,
     DragOverlay,
     DragStartEvent,
     PointerSensor,
@@ -135,57 +134,12 @@ export default function Show({
         }
     };
 
-    const handleDragOver = (event: DragOverEvent) => {
-        const { active, over } = event;
-        if (!over) return;
-
-        const activeId = active.id.toString();
-        const overId = over.id.toString();
-
-        const activeStage = findStageByApplicationId(activeId);
-        const overStage =
-            findStageByApplicationId(overId) ||
-            service.stages?.find((s) => s.id.toString() === overId);
-
-        if (!activeStage || !overStage || activeStage.id === overStage.id) return;
-
-        setService((prev) => {
-            const newStages = prev.stages?.map((stage) => {
-                if (stage.id === activeStage.id) {
-                    return {
-                        ...stage,
-                        applications: stage.applications?.filter(
-                            (app) => app.id.toString() !== activeId,
-                        ),
-                    };
-                }
-                if (stage.id === overStage.id) {
-                    const movedApp = activeStage.applications?.find(
-                        (app) => app.id.toString() === activeId,
-                    );
-                    if (movedApp) {
-                        const newApps = [...(stage.applications || [])];
-                        const overIndex = newApps.findIndex(
-                            (app) => app.id.toString() === overId,
-                        );
-                        newApps.splice(
-                            overIndex >= 0 ? overIndex : newApps.length,
-                            0,
-                            movedApp,
-                        );
-                        return { ...stage, applications: newApps };
-                    }
-                }
-                return stage;
-            });
-            return { ...prev, stages: newStages };
-        });
-    };
-
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         setActiveApplication(null);
-        if (!over) return;
+        if (!over || !service.stages) {
+            return;
+        }
 
         const activeId = active.id.toString();
         const overId = over.id.toString();
@@ -197,39 +151,97 @@ export default function Show({
 
         if (!activeStage || !overStage) return;
 
-        const activeIndex =
-            activeStage.applications?.findIndex(
-                (app) => app.id.toString() === activeId,
-            ) ?? -1;
-        const overIndex =
-            overStage.applications?.findIndex(
-                (app) => app.id.toString() === overId,
-            ) ?? -1;
+        const sourceApps = activeStage.applications || [];
+        const targetApps = overStage.applications || [];
+        const activeIndex = sourceApps.findIndex(
+            (app) => app.id.toString() === activeId,
+        );
 
-        if (activeStage.id === overStage.id && activeIndex !== overIndex) {
+        if (activeIndex < 0) {
+            return;
+        }
+
+        const isOverApplication = targetApps.some(
+            (app) => app.id.toString() === overId,
+        );
+        const overIndex = isOverApplication
+            ? targetApps.findIndex((app) => app.id.toString() === overId)
+            : targetApps.length;
+
+        const boundedOverIndex = Math.max(
+            0,
+            Math.min(overIndex, targetApps.length),
+        );
+
+        if (activeStage.id === overStage.id) {
+            const reorderedApps = arrayMove(
+                sourceApps,
+                activeIndex,
+                boundedOverIndex,
+            );
+            const finalIndex = reorderedApps.findIndex(
+                (app) => app.id.toString() === activeId,
+            );
+
             setService((prev) => ({
                 ...prev,
                 stages: prev.stages?.map((stage) =>
                     stage.id === activeStage.id
                         ? {
                               ...stage,
-                              applications: arrayMove(
-                                  stage.applications || [],
-                                  activeIndex,
-                                  overIndex,
-                              ),
+                              applications: reorderedApps,
                           }
                         : stage,
                 ),
             }));
+
+            router.post(
+                `/client/services/${service.id}/move-application`,
+                {
+                    application_id: parseInt(activeId, 10),
+                    stage_id: overStage.id,
+                    position: finalIndex + 1,
+                },
+                { preserveScroll: true, preserveState: true },
+            );
+
+            return;
         }
+
+        const movedApplication = sourceApps[activeIndex];
+        const updatedSourceApps = sourceApps.filter(
+            (app) => app.id.toString() !== activeId,
+        );
+        const updatedTargetApps = [...targetApps];
+        updatedTargetApps.splice(boundedOverIndex, 0, movedApplication);
+
+        setService((prev) => ({
+            ...prev,
+            stages: prev.stages?.map((stage) => {
+                if (stage.id === activeStage.id) {
+                    return {
+                        ...stage,
+                        applications: updatedSourceApps,
+                    };
+                }
+
+                if (stage.id === overStage.id) {
+                    return {
+                        ...stage,
+                        applications: updatedTargetApps,
+                    };
+                }
+
+                return stage;
+            }),
+        }));
 
         router.post(
             `/client/services/${service.id}/move-application`,
             {
-                application_id: parseInt(activeId),
+                application_id: parseInt(activeId, 10),
                 stage_id: overStage.id,
-                position: overIndex >= 0 ? overIndex : 0,
+                position: boundedOverIndex + 1,
             },
             { preserveScroll: true, preserveState: true },
         );
@@ -470,7 +482,6 @@ export default function Show({
                         <DndContext
                             sensors={sensors}
                             onDragStart={handleDragStart}
-                            onDragOver={handleDragOver}
                             onDragEnd={handleDragEnd}
                         >
                             <div className="flex h-full gap-4">

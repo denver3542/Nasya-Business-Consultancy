@@ -236,7 +236,12 @@ export default function Show({ formField }: FormFieldShowProps) {
                                         (appType) => (
                                             <TableRow key={appType.id}>
                                                 <TableCell className="font-medium">
-                                                    {appType.name}
+                                                    <Link
+                                                        href={`/admin/application-types/${appType.id}/fields`}
+                                                        className="text-primary hover:underline"
+                                                    >
+                                                        {appType.name}
+                                                    </Link>
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge

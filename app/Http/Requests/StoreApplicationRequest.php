@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreApplicationRequest extends FormRequest
 {
@@ -22,11 +23,15 @@ class StoreApplicationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'client_id' => 'required|exists:users,id',
-            'application_type_id' => 'required|exists:application_types,id',
-            'form_data' => 'nullable|array',
-            'client_notes' => 'nullable|string|max:5000',
-            'is_draft' => 'boolean',
+            'client_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
+            'service_id' => ['required', 'integer', 'exists:services,id'],
+            'form_data' => ['nullable', 'array'],
+            'client_notes' => ['nullable', 'string', 'max:5000'],
+            'is_draft' => ['boolean'],
         ];
     }
 
@@ -38,10 +43,10 @@ class StoreApplicationRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'application_type_id.required' => 'Please select an application type.',
+            'service_id.required' => 'Please select a service.',
+            'service_id.exists' => 'The selected service is invalid.',
             'client_id.required' => 'Please select a client.',
             'client_id.exists' => 'The selected client is invalid.',
-            'application_type_id.exists' => 'The selected application type is invalid.',
             'form_data.array' => 'The form data must be a valid array.',
             'client_notes.max' => 'Client notes cannot exceed 5000 characters.',
             'is_draft.boolean' => 'The draft flag must be true or false.',

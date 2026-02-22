@@ -3,6 +3,7 @@
 use App\Models\Application;
 use App\Models\ApplicationStatus;
 use App\Models\ApplicationType;
+use App\Models\Service;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Role;
@@ -111,16 +112,23 @@ test('authenticated users can view create application page', function () {
     $response->assertOk();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('applications/form')
-        ->has('applicationTypes')
+        ->has('services')
     );
 });
 
 test('authenticated users can create a draft application', function () {
     $user = User::factory()->create();
     $user->assignRole('client');
+    $service = Service::create([
+        'user_id' => $user->id,
+        'name' => 'My Service',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
 
     $response = $this->actingAs($user)->post(route('applications.store'), [
-        'application_type_id' => $this->applicationType->id,
+        'client_id' => $user->id,
+        'service_id' => $service->id,
         'form_data' => [
             'business_name' => 'Test Business',
             'business_address' => '123 Test St',
@@ -132,6 +140,7 @@ test('authenticated users can create a draft application', function () {
     $response->assertRedirect();
     $this->assertDatabaseHas('applications', [
         'user_id' => $user->id,
+        'service_id' => $service->id,
         'application_type_id' => $this->applicationType->id,
     ]);
 
@@ -143,9 +152,16 @@ test('authenticated users can create a draft application', function () {
 test('authenticated users can submit an application directly', function () {
     $user = User::factory()->create();
     $user->assignRole('client');
+    $service = Service::create([
+        'user_id' => $user->id,
+        'name' => 'My Service',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
 
     $response = $this->actingAs($user)->post(route('applications.store'), [
-        'application_type_id' => $this->applicationType->id,
+        'client_id' => $user->id,
+        'service_id' => $service->id,
         'form_data' => [
             'business_name' => 'Test Business',
             'business_address' => '123 Test St',
@@ -158,6 +174,157 @@ test('authenticated users can submit an application directly', function () {
     $application = Application::where('user_id', $user->id)->first();
     expect($application->status->slug)->toBe('submitted');
     expect($application->submitted_at)->not->toBeNull();
+});
+
+test('creating application assigns it to a service stage for board management', function () {
+    $user = User::factory()->create();
+    $user->assignRole('client');
+    $service = Service::create([
+        'user_id' => $user->id,
+        'name' => 'Board Service',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
+    $firstStage = $service->stages()->create([
+        'name' => 'To Do',
+        'position' => 0,
+    ]);
+    $service->stages()->create([
+        'name' => 'In Progress',
+        'position' => 1,
+    ]);
+
+    $response = $this->actingAs($user)->post(route('applications.store'), [
+        'client_id' => $user->id,
+        'service_id' => $service->id,
+        'form_data' => [
+            'business_name' => 'Board Ready Application',
+        ],
+        'is_draft' => true,
+    ]);
+
+    $response->assertRedirect();
+
+    $application = Application::query()
+        ->where('user_id', $user->id)
+        ->where('service_id', $service->id)
+        ->latest('id')
+        ->firstOrFail();
+
+    expect($application->service_stage_id)->toBe($firstStage->id);
+    expect($application->service_position)->toBe(1);
+});
+
+test('creating application injects selected client profile fields into form data', function () {
+    $user = User::factory()->create([
+        'name' => 'Client User',
+        'email' => 'client@example.com',
+        'phone' => '09171234567',
+    ]);
+    $user->assignRole('client');
+    $user->profile()->create([
+        'address' => '123 Test St',
+        'city' => 'Makati',
+        'state' => 'NCR',
+        'country' => 'PH',
+        'postal_code' => '1200',
+        'date_of_birth' => '1995-01-15',
+    ]);
+
+    $type = ApplicationType::create([
+        'name' => 'Profile + Business',
+        'slug' => 'profile-plus-business',
+        'description' => 'Requires client and business data',
+        'base_fee' => 2000.00,
+        'estimated_processing_days' => 3,
+        'form_fields' => [
+            [
+                'name' => 'full_name',
+                'label' => 'Full Name',
+                'type' => 'text',
+                'required' => true,
+            ],
+            [
+                'name' => 'contact_number',
+                'label' => 'Contact Number',
+                'type' => 'text',
+                'required' => true,
+            ],
+            [
+                'name' => 'business_name',
+                'label' => 'Business Name',
+                'type' => 'text',
+                'required' => true,
+            ],
+        ],
+        'required_documents' => [],
+        'is_active' => true,
+    ]);
+    $service = Service::create([
+        'user_id' => $user->id,
+        'name' => 'Profile Service',
+        'color' => '#10b981',
+        'position' => 0,
+    ]);
+
+    $response = $this->actingAs($user)->post(route('applications.store'), [
+        'client_id' => $user->id,
+        'service_id' => $service->id,
+        'form_data' => [
+            'business_name' => 'Integrated Ventures',
+        ],
+        'is_draft' => false,
+    ]);
+
+    $response->assertRedirect();
+
+    $application = Application::query()
+        ->where('user_id', $user->id)
+        ->where('service_id', $service->id)
+        ->firstOrFail();
+
+    expect($application->form_data['business_name'])->toBe('Integrated Ventures');
+    expect($application->form_data['name'])->toBe('Client User');
+    expect($application->form_data['full_name'])->toBe('Client User');
+    expect($application->form_data['contact_number'])->toBe('09171234567');
+    expect($application->form_data['email'])->toBe('client@example.com');
+    expect($application->form_data['phone'])->toBe('09171234567');
+    expect($application->form_data['address'])->toBe('123 Test St');
+    expect($application->form_data['city'])->toBe('Makati');
+    expect($application->form_data['state'])->toBe('NCR');
+    expect($application->form_data['country'])->toBe('PH');
+    expect($application->form_data['postal_code'])->toBe('1200');
+    expect($application->form_data['date_of_birth'])->toBe('1995-01-15');
+});
+
+test('client can create application for service they want to acquire even if service owner differs', function () {
+    $client = User::factory()->create();
+    $client->assignRole('client');
+
+    $serviceOwner = User::factory()->create();
+    $serviceOwner->assignRole('client');
+
+    $service = Service::create([
+        'user_id' => $serviceOwner->id,
+        'name' => 'Global Visa Service',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
+
+    $response = $this->actingAs($client)->post(route('applications.store'), [
+        'client_id' => $client->id,
+        'service_id' => $service->id,
+        'form_data' => [
+            'business_name' => 'Acquire This Service',
+        ],
+        'is_draft' => true,
+    ]);
+
+    $response->assertRedirect();
+    $this->assertDatabaseHas('applications', [
+        'user_id' => $client->id,
+        'service_id' => $service->id,
+    ]);
 });
 
 test('users can view their own application', function () {

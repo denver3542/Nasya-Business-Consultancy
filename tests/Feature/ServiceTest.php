@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Application;
+use App\Models\ApplicationStatus;
+use App\Models\ApplicationType;
+use App\Models\FormField;
 use App\Models\Service;
 use App\Models\ServiceStage;
 use App\Models\User;
@@ -34,11 +38,18 @@ test('unauthenticated users cannot view services', function () {
 test('authenticated users can create a service', function () {
     $user = User::factory()->create();
     $user->assignRole('client');
+    $field = FormField::create([
+        'name' => 'passport_number',
+        'label' => 'Passport Number',
+        'type' => 'text',
+        'is_active' => true,
+    ]);
 
     $response = $this->actingAs($user)->post(route('client.services.store'), [
         'name' => 'My Test Service',
         'description' => 'A test service description',
         'color' => '#3b82f6',
+        'form_field_ids' => [$field->id],
     ]);
 
     $response->assertRedirect();
@@ -51,6 +62,7 @@ test('authenticated users can create a service', function () {
 
     $service = Service::where('user_id', $user->id)->first();
     expect($service->stages)->toHaveCount(3);
+    expect($service->formFields()->pluck('form_fields.id')->all())->toContain($field->id);
 });
 
 test('service creation requires a name', function () {
@@ -108,6 +120,18 @@ test('users cannot view other users services', function () {
 test('users can update their services', function () {
     $user = User::factory()->create();
     $user->assignRole('client');
+    $field1 = FormField::create([
+        'name' => 'license_number',
+        'label' => 'License Number',
+        'type' => 'text',
+        'is_active' => true,
+    ]);
+    $field2 = FormField::create([
+        'name' => 'school_name',
+        'label' => 'School Name',
+        'type' => 'text',
+        'is_active' => true,
+    ]);
 
     $service = Service::create([
         'user_id' => $user->id,
@@ -115,16 +139,49 @@ test('users can update their services', function () {
         'color' => '#3b82f6',
         'position' => 0,
     ]);
+    $service->formFields()->sync([$field1->id]);
 
     $response = $this->actingAs($user)->patch(route('client.services.update', $service), [
         'name' => 'Updated Name',
         'description' => 'Updated description',
+        'form_field_ids' => [$field2->id],
     ]);
 
     $response->assertRedirect();
     $service->refresh();
     expect($service->name)->toBe('Updated Name');
     expect($service->description)->toBe('Updated description');
+    expect($service->formFields()->pluck('form_fields.id')->all())->toBe([$field2->id]);
+});
+
+test('same reusable field can be assigned to multiple services', function () {
+    $user = User::factory()->create();
+    $user->assignRole('client');
+    $field = FormField::create([
+        'name' => 'birth_place',
+        'label' => 'Birth Place',
+        'type' => 'text',
+        'is_active' => true,
+    ]);
+
+    $serviceA = Service::create([
+        'user_id' => $user->id,
+        'name' => 'Service A',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
+    $serviceB = Service::create([
+        'user_id' => $user->id,
+        'name' => 'Service B',
+        'color' => '#10b981',
+        'position' => 1,
+    ]);
+
+    $serviceA->formFields()->sync([$field->id]);
+    $serviceB->formFields()->sync([$field->id]);
+
+    expect($serviceA->formFields()->whereKey($field->id)->exists())->toBeTrue();
+    expect($serviceB->formFields()->whereKey($field->id)->exists())->toBeTrue();
 });
 
 test('users cannot update other users services', function () {
@@ -300,4 +357,113 @@ test('users cannot manage stages on other users services', function () {
     ]);
 
     $response->assertForbidden();
+});
+
+test('users can move applications between service stages and keep positions ordered', function () {
+    $user = User::factory()->create();
+    $user->assignRole('client');
+
+    $draftStatus = ApplicationStatus::create([
+        'name' => 'Draft',
+        'slug' => 'draft',
+        'color' => 'gray',
+        'is_final' => false,
+        'visible_to_client' => true,
+    ]);
+
+    $applicationType = ApplicationType::create([
+        'name' => 'General',
+        'slug' => 'general',
+        'description' => 'General application type',
+        'base_fee' => 1000,
+        'estimated_processing_days' => 3,
+        'form_fields' => [],
+        'required_documents' => [],
+        'is_active' => true,
+    ]);
+
+    $service = Service::create([
+        'user_id' => $user->id,
+        'name' => 'My Service',
+        'color' => '#3b82f6',
+        'position' => 0,
+    ]);
+
+    $sourceStage = ServiceStage::create([
+        'service_id' => $service->id,
+        'name' => 'To Do',
+        'position' => 0,
+    ]);
+    $destinationStage = ServiceStage::create([
+        'service_id' => $service->id,
+        'name' => 'In Progress',
+        'position' => 1,
+    ]);
+
+    [$movedApplication, $remainingSourceApplication, $destinationExistingApplication] = Application::withoutEvents(
+        function () use ($applicationType, $destinationStage, $draftStatus, $service, $sourceStage, $user): array {
+            $movedApplication = Application::create([
+                'application_number' => 'TEST-MOVE-0001',
+                'user_id' => $user->id,
+                'application_type_id' => $applicationType->id,
+                'application_status_id' => $draftStatus->id,
+                'service_id' => $service->id,
+                'service_stage_id' => $sourceStage->id,
+                'service_position' => 1,
+                'total_fee' => 1000,
+                'form_data' => [],
+            ]);
+            $remainingSourceApplication = Application::create([
+                'application_number' => 'TEST-MOVE-0002',
+                'user_id' => $user->id,
+                'application_type_id' => $applicationType->id,
+                'application_status_id' => $draftStatus->id,
+                'service_id' => $service->id,
+                'service_stage_id' => $sourceStage->id,
+                'service_position' => 2,
+                'total_fee' => 1000,
+                'form_data' => [],
+            ]);
+            $destinationExistingApplication = Application::create([
+                'application_number' => 'TEST-MOVE-0003',
+                'user_id' => $user->id,
+                'application_type_id' => $applicationType->id,
+                'application_status_id' => $draftStatus->id,
+                'service_id' => $service->id,
+                'service_stage_id' => $destinationStage->id,
+                'service_position' => 1,
+                'total_fee' => 1000,
+                'form_data' => [],
+            ]);
+
+            return [$movedApplication, $remainingSourceApplication, $destinationExistingApplication];
+        }
+    );
+
+    $this->actingAs($user)->post(route('client.services.move-application', $service), [
+        'application_id' => $movedApplication->id,
+        'stage_id' => $destinationStage->id,
+        'position' => 1,
+    ])->assertRedirect();
+
+    $movedApplication->refresh();
+    $remainingSourceApplication->refresh();
+    $destinationExistingApplication->refresh();
+
+    expect($movedApplication->service_stage_id)->toBe($destinationStage->id);
+    expect($movedApplication->service_position)->toBe(1);
+    expect($destinationExistingApplication->service_position)->toBe(2);
+    expect($remainingSourceApplication->service_position)->toBe(1);
+
+    $this->actingAs($user)->post(route('client.services.move-application', $service), [
+        'application_id' => $movedApplication->id,
+        'stage_id' => $destinationStage->id,
+        'position' => 2,
+    ])->assertRedirect();
+
+    $movedApplication->refresh();
+    $destinationExistingApplication->refresh();
+
+    expect($destinationExistingApplication->service_position)->toBe(1);
+    expect($movedApplication->service_position)->toBe(2);
 });

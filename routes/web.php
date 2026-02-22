@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\Admin\ApplicationTypeFieldController;
 use App\Http\Controllers\Admin\FormFieldController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Client\ApplicationCollaborationController;
 use App\Http\Controllers\Client\ApplicationController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\ServiceStageController;
+use App\Http\Controllers\ClientController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -27,7 +30,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('applications.settings');
     Route::post('applications/settings', [ApplicationController::class, 'updateSettings'])
         ->name('applications.update-settings');
-        
+
     Route::resource('applications', ApplicationController::class);
 
     // Application workflow actions
@@ -58,14 +61,36 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('applications.remove-tag');
 
     // Application collaboration
-    Route::post('applications/{application}/add-comment', [ApplicationController::class, 'addComment'])
+    Route::post('applications/{application}/add-comment', [ApplicationCollaborationController::class, 'addComment'])
         ->name('applications.add-comment');
+    Route::delete('applications/{application}/comments/{comment}', [ApplicationCollaborationController::class, 'deleteComment'])
+        ->name('applications.comments.delete');
+    Route::post('applications/{application}/comments/{comment}/toggle-like', [ApplicationCollaborationController::class, 'toggleCommentLike'])
+        ->name('applications.comments.toggle-like');
+
+    Route::post('applications/{application}/documents', [ApplicationCollaborationController::class, 'uploadDocuments'])
+        ->name('applications.documents.upload');
+    Route::get('applications/{application}/documents/{document}/download', [ApplicationCollaborationController::class, 'downloadDocument'])
+        ->name('applications.documents.download');
+    Route::delete('applications/{application}/documents/{document}', [ApplicationCollaborationController::class, 'deleteDocument'])
+        ->name('applications.documents.delete');
+
     Route::post('applications/{application}/toggle-watcher', [ApplicationController::class, 'toggleWatcher'])
         ->name('applications.toggle-watcher');
+    Route::post('applications/{application}/watchers/sync', [ApplicationCollaborationController::class, 'syncWatchers'])
+        ->name('applications.watchers.sync');
+    Route::post('applications/{application}/dates', [ApplicationCollaborationController::class, 'updateDates'])
+        ->name('applications.update-dates');
+    Route::post('applications/{application}/send-email', [ApplicationCollaborationController::class, 'sendEmail'])
+        ->name('applications.send-email');
 
     // Bulk actions
     Route::post('applications/bulk-action', [ApplicationController::class, 'bulkAction'])
         ->name('applications.bulk-action');
+});
+
+Route::middleware(['auth', 'verified', 'role:admin|staff'])->group(function () {
+    Route::resource('clients', ClientController::class);
 });
 
 // Client routes (services)
@@ -103,6 +128,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('ad
     Route::resource('form-fields', FormFieldController::class);
     Route::post('form-fields/{form_field}/toggle-status', [FormFieldController::class, 'toggleStatus'])
         ->name('form-fields.toggle-status');
+
+    Route::get('application-types/{applicationType}/fields', [ApplicationTypeFieldController::class, 'index'])
+        ->name('application-types.fields.index');
+    Route::delete('application-types/{applicationType}/fields', [ApplicationTypeFieldController::class, 'destroy'])
+        ->name('application-types.fields.destroy');
 });
 
 require __DIR__.'/settings.php';

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Client;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreServiceRequest;
 use App\Http\Requests\UpdateServiceRequest;
+use App\Models\FormField;
 use App\Models\Service;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,9 @@ class ServiceController extends Controller
      */
     public function create(): Response
     {
-        return Inertia::render('services/create');
+        return Inertia::render('services/create', [
+            'availableFormFields' => $this->availableFormFields(),
+        ]);
     }
 
     /**
@@ -54,6 +57,7 @@ class ServiceController extends Controller
                 'color' => $request->validated('color', '#3b82f6'),
                 'position' => $maxPosition + 1,
             ]);
+            $service->formFields()->sync($request->validated('form_field_ids', []));
 
             // Create default stages
             $defaultStages = ['To Do', 'In Progress', 'Done'];
@@ -111,9 +115,13 @@ class ServiceController extends Controller
     public function edit(Service $service): Response
     {
         $this->authorize('update', $service);
+        $service->load('formFields:id');
 
         return Inertia::render('services/edit', [
-            'service' => $service,
+            'service' => array_merge($service->toArray(), [
+                'form_field_ids' => $service->formFields->pluck('id')->values()->all(),
+            ]),
+            'availableFormFields' => $this->availableFormFields(),
         ]);
     }
 
@@ -123,10 +131,18 @@ class ServiceController extends Controller
     public function update(UpdateServiceRequest $request, Service $service): RedirectResponse
     {
         try {
-            $service->update($request->validated());
+            DB::beginTransaction();
+
+            $validated = $request->validated();
+            $service->update(collect($validated)->except('form_field_ids')->all());
+            $service->formFields()->sync($validated['form_field_ids'] ?? []);
+
+            DB::commit();
 
             return back()->with('success', 'Service updated successfully.');
         } catch (\Exception $e) {
+            DB::rollBack();
+
             return back()
                 ->withInput()
                 ->with('error', 'Failed to update service: '.$e->getMessage());
@@ -271,7 +287,7 @@ class ServiceController extends Controller
         $validated = request()->validate([
             'application_id' => ['required', 'exists:applications,id'],
             'stage_id' => ['required', 'exists:service_stages,id'],
-            'position' => ['required', 'integer', 'min:0'],
+            'position' => ['required', 'integer', 'min:1'],
         ]);
 
         try {
@@ -279,18 +295,40 @@ class ServiceController extends Controller
 
             $application = $service->applications()->findOrFail($validated['application_id']);
             $newStage = $service->stages()->findOrFail($validated['stage_id']);
-
-            // Update the application's stage and position
-            $application->update([
-                'service_stage_id' => $newStage->id,
-                'service_position' => $validated['position'],
-            ]);
-
-            // Reorder other applications in the stage
-            $newStage->applications()
+            $oldStageId = $application->service_stage_id;
+            $destinationIds = $newStage->applications()
                 ->where('id', '!=', $application->id)
-                ->where('service_position', '>=', $validated['position'])
-                ->increment('service_position');
+                ->orderBy('service_position')
+                ->pluck('id')
+                ->all();
+
+            $targetIndex = max(0, min($validated['position'] - 1, count($destinationIds)));
+            array_splice($destinationIds, $targetIndex, 0, [$application->id]);
+
+            foreach ($destinationIds as $index => $applicationId) {
+                $service->applications()
+                    ->whereKey($applicationId)
+                    ->update([
+                        'service_stage_id' => $newStage->id,
+                        'service_position' => $index + 1,
+                    ]);
+            }
+
+            if ($oldStageId && $oldStageId !== $newStage->id) {
+                $sourceIds = $service->applications()
+                    ->where('service_stage_id', $oldStageId)
+                    ->orderBy('service_position')
+                    ->pluck('id')
+                    ->all();
+
+                foreach ($sourceIds as $index => $applicationId) {
+                    $service->applications()
+                        ->whereKey($applicationId)
+                        ->update([
+                            'service_position' => $index + 1,
+                        ]);
+                }
+            }
 
             DB::commit();
 
@@ -300,5 +338,22 @@ class ServiceController extends Controller
 
             return back()->with('error', 'Failed to move application: '.$e->getMessage());
         }
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string, label: string, type: string}>
+     */
+    protected function availableFormFields(): array
+    {
+        return FormField::query()
+            ->active()
+            ->orderBy('label')
+            ->get(['id', 'name', 'label', 'type'])
+            ->map(fn (FormField $field): array => [
+                'id' => $field->id,
+                'name' => $field->name,
+                'label' => $field->label,
+                'type' => $field->type,
+            ])->values()->all();
     }
 }

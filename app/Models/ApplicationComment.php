@@ -14,11 +14,15 @@ class ApplicationComment extends Model
         'user_id',
         'comment',
         'attachments',
+        'likes',
+        'mentions',
         'parent_id',
     ];
 
     protected $casts = [
         'attachments' => 'array',
+        'likes' => 'array',
+        'mentions' => 'array',
     ];
 
     public function application()
@@ -39,5 +43,10 @@ class ApplicationComment extends Model
     public function replies()
     {
         return $this->hasMany(ApplicationComment::class, 'parent_id')->latest();
+    }
+
+    public function isLikedBy(int $userId): bool
+    {
+        return in_array($userId, $this->likes ?? [], true);
     }
 }
